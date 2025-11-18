@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wi-Fi Севастополь</title>
+    <script src="https://st.max.ru/js/max-web-app.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Шапка -->
+        <header class="header">
+            <h1>🗺️ Wi-Fi Севастополь</h1>
+            <div class="user-info" id="userInfo">
+                <span>Загрузка...</span>
+            </div>
+        </header>
+
+        <!-- Навигация -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="map">🗺️ Карта</button>
+            <button class="tab-btn" data-tab="list">📋 Список</button>
+            <button class="tab-btn" data-tab="report">🔧 Обращения</button>
+            <button class="tab-btn" data-tab="admin" id="adminTab" style="display: none;">👑 Админка</button>
+        </nav>
+
+        <!-- Основной контент -->
+        <main class="main-content">
+            <!-- Экран карты -->
+            <div id="map-screen" class="screen active">
+                <div class="card">
+                    <h3>📍 Найти ближайший Wi-Fi</h3>
+                    <button onclick="findNearestPoints()" class="btn primary" id="findBtn">
+                        📍 Определить мое местоположение
+                    </button>
+                    <div id="nearestResults" class="results"></div>
+                </div>
+                
+                <div class="card">
+                    <h3>🗺️ Карта точек</h3>
+                    <div id="map" class="map-container">
+                        <div class="map-placeholder">
+                            Карта загружается...
+                            <div class="map-points-list">
+                                <div class="point-item" onclick="showPointDetails(1)">
+                                    <span>🏥 1-я Городская Больница</span>
+                                    <small>0.8 км</small>
+                                </div>
+                                <div class="point-item" onclick="showPointDetails(4)">
+                                    <span>🎓 Школа №22</span>
+                                    <small>1.2 км</small>
+                                </div>
+                                <div class="point-item" onclick="showPointDetails(6)">
+                                    <span>🛍️ ТЦ Пассаж</span>
+                                    <small>0.5 км</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Экран списка -->
+            <div id="list-screen" class="screen">
+                <div class="filters">
+                    <button class="filter-btn active" onclick="filterPoints('all')">Все</button>
+                    <button class="filter-btn" onclick="filterPoints('здрав')">🏥 Медицина</button>
+                    <button class="filter-btn" onclick="filterPoints('образование')">🎓 Образование</button>
+                    <button class="filter-btn" onclick="filterPoints('транспорт')">🚌 Остановки</button>
+                    <button class="filter-btn" onclick="filterPoints('МФЦ')">🏢 МФЦ</button>
+                </div>
+                <div id="points-list" class="points-list"></div>
+            </div>
+
+            <!-- Экран обращений -->
+            <div id="report-screen" class="screen">
+                <div class="card">
+                    <h3>🔧 Сообщить о проблеме</h3>
+                    <div class="form-group">
+                        <label>Выберите точку Wi-Fi:</label>
+                        <select id="problemPoint" class="form-input">
+                            <option value="">-- Выберите точку --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Тип проблемы:</label>
+                        <select id="problemType" class="form-input">
+                            <option value="not_working">Точка не работает</option>
+                            <option value="weak_signal">Плохой сигнал</option>
+                            <option value="no_auth">Не открывается авторизация</option>
+                            <option value="other">Другое</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Подробное описание:</label>
+                        <textarea id="problemDesc" class="form-input" rows="4" 
+                                  placeholder="Опишите проблему подробно..."></textarea>
+                    </div>
+                    <button onclick="submitProblem()" class="btn primary">📨 Отправить заявку</button>
+                </div>
+
+                <div class="card">
+                    <h3>📍 Предложить новую точку</h3>
+                    <div class="form-group">
+                        <label>Адрес или место:</label>
+                        <input type="text" id="newPointAddress" class="form-input" 
+                               placeholder="Например: парк Победы, ул. Ленина 10">
+                    </div>
+                    <div class="form-group">
+                        <label>Почему здесь нужен Wi-Fi:</label>
+                        <textarea id="newPointReason" class="form-input" rows="3"
+                                  placeholder="Опишите, почему здесь нужна точка Wi-Fi..."></textarea>
+                    </div>
+                    <button onclick="submitSuggestion()" class="btn secondary">💡 Отправить предложение</button>
+                </div>
+
+                <div class="card">
+                    <h3>📋 Мои обращения</h3>
+                    <div id="my-requests" class="requests-list"></div>
+                </div>
+            </div>
+
+            <!-- Админ-панель -->
+            <div id="admin-screen" class="screen">
+                <div class="card admin-header">
+                    <h3>👑 Панель администратора</h3>
+                    <div class="admin-stats">
+                        <div class="stat">
+                            <span class="stat-number" id="totalRequests">0</span>
+                            <span class="stat-label">Всего обращений</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-number" id="newRequests">0</span>
+                            <span class="stat-label">Новых</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="admin-content">
+                    <div class="requests-column">
+                        <h4>📨 Обращения пользователей</h4>
+                        <div id="admin-requests" class="admin-requests-list"></div>
+                    </div>
+                    
+                    <div class="details-column">
+                        <div id="request-details" class="request-details">
+                            <div class="placeholder">
+                                <p>Выберите обращение для просмотра деталей и ответа</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Модальное окно деталей точки -->
+    <div id="pointModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div id="pointDetails"></div>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
