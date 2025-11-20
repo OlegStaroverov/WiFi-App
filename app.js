@@ -16,7 +16,11 @@ class SevastopolWifiApp {
         this.populatePointSelect();
         this.loadUserRequests();
         this.checkAdminStatus();
-        await this.initYandexMap();
+        
+        // Инициализируем карту с задержкой чтобы DOM точно был готов
+        setTimeout(() => {
+            this.initYandexMap();
+        }, 1000);
     }
 
     setupEventListeners() {
@@ -37,67 +41,103 @@ class SevastopolWifiApp {
 
     async initYandexMap() {
         try {
+            console.log('🔄 Инициализация Яндекс.Карт...');
+            
             // Ждем загрузку API
             await ymaps3.ready;
+            console.log('✅ Яндекс.Карты API загружены');
             
             const {YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker} = ymaps3;
 
-            // Создаем карту
+            // Инициализируем карту
             this.map = new YMap(
                 document.getElementById('yandexMap'),
                 {
                     location: {
-                        center: [33.5224, 44.6167],
+                        center: [33.5224, 44.6167], // [долгота, широта] - СЕВАСТОПОЛЬ
                         zoom: 12
                     }
                 }
             );
 
-            // Добавляем стандартные слои
+            // Добавляем слои
             this.map.addChild(new YMapDefaultSchemeLayer());
             this.map.addChild(new YMapDefaultFeaturesLayer());
-
+            
+            console.log('✅ Карта создана, добавляем маркеры...');
+            
             // Добавляем маркеры точек Wi-Fi
             this.addWifiPointsToMap();
+            
+            console.log('✅ Яндекс.Карты полностью инициализированы');
 
         } catch (error) {
-            console.error('Ошибка Яндекс.Карт:', error);
-            // Простой fallback
+            console.error('❌ Ошибка Яндекс.Карт:', error);
+            // Fallback - показываем информационный текст
             document.getElementById('yandexMap').innerHTML = `
                 <div class="map-placeholder">
-                    <p>🗺️ Карта точек Wi-Fi Севастополя</p>
-                    <p><small>Используйте поиск ближайших точек или список точек</small></p>
+                    <div style="font-size: 48px; margin-bottom: 16px;">🗺️</div>
+                    <h3>Карта точек Wi-Fi Севастополя</h3>
+                    <p>Для отображения карты необходим API-ключ Яндекс.Карт</p>
+                    <button onclick="app.showPointDetails(1)" class="btn primary" style="margin-top: 16px;">
+                        📋 Посмотреть список точек
+                    </button>
                 </div>
             `;
         }
     }
 
     addWifiPointsToMap() {
-        if (!this.map || !ymaps3) return;
+        if (!this.map) {
+            console.error('❌ Карта не инициализирована');
+            return;
+        }
 
         const {YMapMarker} = ymaps3;
 
-        wifiPoints.forEach(point => {
-            const markerElement = document.createElement('div');
-            markerElement.className = 'wifi-marker';
-            markerElement.innerHTML = '📶';
-            markerElement.title = point.name;
-            markerElement.style.cursor = 'pointer';
-            
-            markerElement.addEventListener('click', () => {
-                this.showPointDetails(point.id);
-            });
+        // Берем только первые 20 точек для теста
+        const pointsToShow = wifiPoints.slice(0, 20);
+        
+        pointsToShow.forEach(point => {
+            try {
+                const markerElement = document.createElement('div');
+                markerElement.className = 'wifi-marker';
+                markerElement.innerHTML = '📶';
+                markerElement.title = point.name;
+                markerElement.style.cssText = `
+                    font-size: 24px;
+                    cursor: pointer;
+                    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+                    transition: transform 0.2s ease;
+                `;
+                
+                markerElement.addEventListener('click', () => {
+                    this.showPointDetails(point.id);
+                });
 
-            const marker = new YMapMarker(
-                {
-                    coordinates: [point.coordinates.lon, point.coordinates.lat],
-                    source: 'wifi-source'
-                },
-                markerElement
-            );
+                markerElement.addEventListener('mouseenter', () => {
+                    markerElement.style.transform = 'scale(1.3)';
+                });
 
-            this.map.addChild(marker);
+                markerElement.addEventListener('mouseleave', () => {
+                    markerElement.style.transform = 'scale(1)';
+                });
+
+                const marker = new YMapMarker(
+                    {
+                        coordinates: [point.coordinates.lon, point.coordinates.lat],
+                    },
+                    markerElement
+                );
+
+                this.map.addChild(marker);
+                
+            } catch (error) {
+                console.error(`❌ Ошибка создания маркера для точки ${point.id}:`, error);
+            }
         });
+        
+        console.log(`✅ Добавлено ${pointsToShow.length} маркеров на карту`);
     }
 
     loadUserData() {
@@ -216,62 +256,51 @@ class SevastopolWifiApp {
         
         const originalText = btn.innerHTML;
         const loadingStages = [
-            { text: '📍 Определяем местоположение...', progress: 20 },
-            { text: '🗺️ Загружаем карту точек...', progress: 40 },
-            { text: '📡 Сканируем сеть Wi-Fi...', progress: 60 },
-            { text: '🔍 Анализируем расстояние...', progress: 80 },
-            { text: '🎯 Почти нашли...', progress: 90 },
-            { text: '💫 Готово!', progress: 100 }
+            '📍 Определяем местоположение...',
+            '🗺️ Сканируем карту...', 
+            '📡 Ищем ближайшие точки Wi-Fi...',
+            '🔍 Анализируем расстояние...',
+            '💫 Почти нашли...'
         ];
         
         let currentStage = 0;
+        let messageInterval;
         
-        // Создаем контейнер для прогресса
-        const progressHTML = `
-            <div style="width: 100%; background: #e0e0e0; border-radius: 10px; margin-top: 8px;">
-                <div id="progressBar" style="height: 4px; background: #007AFF; border-radius: 10px; width: 0%; transition: width 0.5s ease;"></div>
-            </div>
-        `;
+        // Функция для плавной смены сообщений
+        const startLoadingAnimation = () => {
+            messageInterval = setInterval(() => {
+                if (currentStage < loadingStages.length - 1) {
+                    currentStage++;
+                    btn.innerHTML = loadingStages[currentStage];
+                } else {
+                    // Достигли последнего сообщения - останавливаемся на нем
+                    clearInterval(messageInterval);
+                }
+            }, 2000); // Меняем каждые 2 секунды
+        };
         
         btn.disabled = true;
-        btn.innerHTML = `${loadingStages[0].text} ${progressHTML}`;
-        
-        const progressInterval = setInterval(() => {
-            if (currentStage < loadingStages.length - 1) {
-                currentStage++;
-                const stage = loadingStages[currentStage];
-                btn.innerHTML = `${stage.text} ${progressHTML}`;
-                document.getElementById('progressBar').style.width = `${stage.progress}%`;
-            }
-        }, 800);
+        btn.innerHTML = loadingStages[0];
+        startLoadingAnimation();
         
         try {
-            await this.getBrowserLocation();
+            // Запускаем поиск и ждем его завершения
+            const searchPromise = this.getBrowserLocation();
             
-            // Завершаем прогресс
-            clearInterval(progressInterval);
-            const finalStage = loadingStages[loadingStages.length - 1];
-            btn.innerHTML = `${finalStage.text} ${progressHTML}`;
-            document.getElementById('progressBar').style.width = '100%';
+            // Если поиск завершится быстрее чем анимация - прерываем анимацию
+            await searchPromise;
             
-            // Задержка перед возвратом к исходному состоянию
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Поиск завершился - останавливаем анимацию
+            clearInterval(messageInterval);
             
         } catch (error) {
             console.error('Ошибка поиска:', error);
             this.showNearestWithoutLocation();
         } finally {
-            clearInterval(progressInterval);
+            // Всегда возвращаем кнопку в исходное состояние
+            clearInterval(messageInterval);
             btn.disabled = false;
             btn.innerHTML = originalText;
-            
-            // Анимация успеха
-            btn.style.transform = 'scale(1.05)';
-            btn.style.background = '#34C759';
-            setTimeout(() => {
-                btn.style.transform = 'scale(1)';
-                btn.style.background = '';
-            }, 300);
         }
     }
 
