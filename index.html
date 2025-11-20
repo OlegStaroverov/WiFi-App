@@ -6,6 +6,34 @@
     <title>Wi-Fi Севастополь</title>
     <script src="https://st.max.ru/js/max-web-app.js"></script>
     <script src="https://api-maps.yandex.ru/3.0/?apikey=ecac47f2-9ce4-4e1f-9eea-980f1b1c8292&lang=ru_RU"></script>
+    <script>
+    // Проверка загрузки Яндекс.Карт
+    window.checkYmapsLoaded = function() {
+        if (typeof ymaps3 === 'undefined') {
+            console.error('❌ Яндекс.Карты не загрузились');
+            // Можно показать сообщение пользователю
+            setTimeout(() => {
+                const mapContainer = document.getElementById('yandexMap');
+                if (mapContainer) {
+                    mapContainer.innerHTML = `
+                        <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #666;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 48px;">🗺️</div>
+                                <p>Проверьте API-ключ Яндекс.Карт</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            }, 1000);
+        } else {
+            console.log('✅ Яндекс.Карты API загружены');
+        }
+    };
+
+    // Проверяем через секунду после загрузки
+    setTimeout(window.checkYmapsLoaded, 1000);
+    </script>
+
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
