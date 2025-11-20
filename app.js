@@ -4,6 +4,8 @@ class SevastopolWifiApp {
         this.currentUser = null;
         this.currentTab = 'map';
         this.selectedRequest = null;
+        this.isSearching = false;
+        this.searchAnimation = null;
         this.init();
     }
 
@@ -154,88 +156,111 @@ class SevastopolWifiApp {
             ).join('');
     }
 
-    // Поиск ближайших точек
+    // Поиск ближайших точек - ИСПРАВЛЕННАЯ ВЕРСИЯ
     async findNearestPoints() {
+        if (this.isSearching) {
+            return;
+        }
+
         const btn = document.getElementById('findBtn');
         const results = document.getElementById('nearestResults');
         
         const originalText = btn.innerHTML;
+        
+        // Сообщения для анимации поиска
         const loadingMessages = [
             '📍 Определяем местоположение...',
             '🗺️ Сканируем карту...', 
             '📡 Ищем ближайшие точки Wi-Fi...',
-            '🔍 Анализируем расстояние...',
-            '💫 Почти нашли...'
+            '🔍 Анализируем расстояние...'
         ];
         
+        this.isSearching = true;
+        btn.disabled = true;
+        
         let currentStage = 0;
-        let messageInterval;
         
         // Функция для плавной смены сообщений
         const startLoadingAnimation = () => {
-            messageInterval = setInterval(() => {
+            this.searchAnimation = setInterval(() => {
                 if (currentStage < loadingMessages.length - 1) {
                     currentStage++;
                     btn.innerHTML = loadingMessages[currentStage];
                 } else {
-                    clearInterval(messageInterval);
+                    // Достигли последнего сообщения - остаемся на нем
+                    clearInterval(this.searchAnimation);
                 }
-            }, 2000);
+            }, 3000); // Увеличил интервал до 3 секунд для плавности
         };
         
-        btn.disabled = true;
+        // Начинаем с первого сообщения
         btn.innerHTML = loadingMessages[0];
         startLoadingAnimation();
         
         try {
-            const searchPromise = this.getBrowserLocation();
-            await searchPromise;
-            clearInterval(messageInterval);
+            // Используем улучшенный метод получения геолокации
+            const position = await this.getBrowserLocationWithTimeout(10000);
+            
+            if (position) {
+                const { latitude, longitude } = position.coords;
+                const nearest = findNearestPoints(latitude, longitude, 5);
+                this.displayNearestResults(nearest, false);
+            } else {
+                // Если геолокация недоступна, показываем популярные точки
+                this.showNearestWithoutLocation();
+            }
             
         } catch (error) {
             console.error('Ошибка поиска:', error);
             this.showNearestWithoutLocation();
         } finally {
-            clearInterval(messageInterval);
+            // Завершаем анимацию и восстанавливаем кнопку
+            this.stopSearchAnimation();
             btn.disabled = false;
             btn.innerHTML = originalText;
+            this.isSearching = false;
         }
     }
 
-    getBrowserLocation() {
+    // Улучшенный метод получения геолокации с таймаутом
+    getBrowserLocationWithTimeout(timeout) {
         return new Promise((resolve, reject) => {
             if (!navigator.geolocation) {
-                this.showNearestWithoutLocation();
-                resolve();
+                resolve(null);
                 return;
             }
 
+            const options = {
+                enableHighAccuracy: false,
+                timeout: timeout,
+                maximumAge: 60000
+            };
+
             const timeoutId = setTimeout(() => {
-                this.showNearestWithoutLocation();
-                resolve();
-            }, 10000);
+                resolve(null);
+            }, timeout);
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     clearTimeout(timeoutId);
-                    const { latitude, longitude } = position.coords;
-                    const nearest = findNearestPoints(latitude, longitude, 5);
-                    this.displayNearestResults(nearest);
-                    resolve();
+                    resolve(position);
                 },
                 (error) => {
                     clearTimeout(timeoutId);
                     console.log('Геолокация недоступна:', error.message);
-                    this.showNearestWithoutLocation();
-                    resolve();
+                    resolve(null);
                 },
-                {
-                    enableHighAccuracy: false,
-                    timeout: 8000,
-                    maximumAge: 60000
-                }
+                options
             );
         });
+    }
+
+    // Остановка анимации поиска
+    stopSearchAnimation() {
+        if (this.searchAnimation) {
+            clearInterval(this.searchAnimation);
+            this.searchAnimation = null;
+        }
     }
 
     showNearestWithoutLocation() {
@@ -268,7 +293,7 @@ class SevastopolWifiApp {
                             📝 Подробнее
                         </button>
                         <button class="result-btn primary" onclick="app.openYandexMaps(${point.id})">
-                            🗺️ Маршрут
+                            🗺️ Построить маршрут
                         </button>
                     </div>
                 </div>
@@ -277,7 +302,7 @@ class SevastopolWifiApp {
         `;
     }
 
-    // Показать детали точки
+    // Показать детали точки - ИСПРАВЛЕННАЯ ВЕРСИЯ
     showPointDetails(pointId) {
         const point = wifiPoints.find(p => p.id === pointId);
         if (!point) return;
@@ -304,10 +329,10 @@ class SevastopolWifiApp {
             </div>
             <div style="display: flex; gap: 8px; margin-top: 20px;">
                 <a href="${yandexMapUrl}" target="_blank" class="btn secondary" style="flex: 1; text-align: center; text-decoration: none;">
-                    📍 Яндекс.Карты
+                    🗺️ Посмотреть на Яндекс.Карте
                 </a>
                 <a href="${yandexNavigatorUrl}" class="btn primary" style="flex: 1; text-align: center; text-decoration: none;">
-                    🚗 Маршрут
+                    🚗 Построить маршрут до точки
                 </a>
             </div>
             <button onclick="app.reportSpecificProblem(${pointId})" class="btn primary" style="margin-top: 16px; width: 100%;">
