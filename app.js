@@ -37,32 +37,38 @@ class SevastopolWifiApp {
 
     async initYandexMap() {
         try {
+            // Ждем загрузку API
             await ymaps3.ready;
             
             const {YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker} = ymaps3;
-            
-            // Инициализируем карту
+
+            // Создаем карту
             this.map = new YMap(
                 document.getElementById('yandexMap'),
                 {
                     location: {
-                        center: [33.5224, 44.6167], // Центр Севастополя
+                        center: [33.5224, 44.6167],
                         zoom: 12
                     }
                 }
             );
 
-            // Добавляем слои
+            // Добавляем стандартные слои
             this.map.addChild(new YMapDefaultSchemeLayer());
             this.map.addChild(new YMapDefaultFeaturesLayer());
 
-            // Добавляем маркеры для всех точек Wi-Fi
+            // Добавляем маркеры точек Wi-Fi
             this.addWifiPointsToMap();
 
         } catch (error) {
-            console.error('Ошибка инициализации Яндекс.Карт:', error);
-            document.getElementById('yandexMap').innerHTML = 
-                '<div class="map-placeholder">Карта временно недоступна</div>';
+            console.error('Ошибка Яндекс.Карт:', error);
+            // Простой fallback
+            document.getElementById('yandexMap').innerHTML = `
+                <div class="map-placeholder">
+                    <p>🗺️ Карта точек Wi-Fi Севастополя</p>
+                    <p><small>Используйте поиск ближайших точек или список точек</small></p>
+                </div>
+            `;
         }
     }
 
@@ -208,46 +214,103 @@ class SevastopolWifiApp {
         const btn = document.getElementById('findBtn');
         const results = document.getElementById('nearestResults');
         
-        btn.innerHTML = '🔄 Определяем местоположение...';
+        const originalText = btn.innerHTML;
+        const loadingStages = [
+            { text: '📍 Определяем местоположение...', progress: 20 },
+            { text: '🗺️ Загружаем карту точек...', progress: 40 },
+            { text: '📡 Сканируем сеть Wi-Fi...', progress: 60 },
+            { text: '🔍 Анализируем расстояние...', progress: 80 },
+            { text: '🎯 Почти нашли...', progress: 90 },
+            { text: '💫 Готово!', progress: 100 }
+        ];
+        
+        let currentStage = 0;
+        
+        // Создаем контейнер для прогресса
+        const progressHTML = `
+            <div style="width: 100%; background: #e0e0e0; border-radius: 10px; margin-top: 8px;">
+                <div id="progressBar" style="height: 4px; background: #007AFF; border-radius: 10px; width: 0%; transition: width 0.5s ease;"></div>
+            </div>
+        `;
+        
         btn.disabled = true;
-
+        btn.innerHTML = `${loadingStages[0].text} ${progressHTML}`;
+        
+        const progressInterval = setInterval(() => {
+            if (currentStage < loadingStages.length - 1) {
+                currentStage++;
+                const stage = loadingStages[currentStage];
+                btn.innerHTML = `${stage.text} ${progressHTML}`;
+                document.getElementById('progressBar').style.width = `${stage.progress}%`;
+            }
+        }, 800);
+        
         try {
             await this.getBrowserLocation();
+            
+            // Завершаем прогресс
+            clearInterval(progressInterval);
+            const finalStage = loadingStages[loadingStages.length - 1];
+            btn.innerHTML = `${finalStage.text} ${progressHTML}`;
+            document.getElementById('progressBar').style.width = '100%';
+            
+            // Задержка перед возвратом к исходному состоянию
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
         } catch (error) {
+            console.error('Ошибка поиска:', error);
             this.showNearestWithoutLocation();
         } finally {
+            clearInterval(progressInterval);
             btn.disabled = false;
-            btn.innerHTML = '📍 Найти ближайшие точки';
+            btn.innerHTML = originalText;
+            
+            // Анимация успеха
+            btn.style.transform = 'scale(1.05)';
+            btn.style.background = '#34C759';
+            setTimeout(() => {
+                btn.style.transform = 'scale(1)';
+                btn.style.background = '';
+            }, 300);
         }
     }
 
     getBrowserLocation() {
         return new Promise((resolve, reject) => {
             if (!navigator.geolocation) {
-                reject(new Error('Геолокация не поддерживается'));
+                this.showNearestWithoutLocation();
+                resolve();
                 return;
             }
 
+            // Таймаут 8 секунд
+            const timeoutId = setTimeout(() => {
+                this.showNearestWithoutLocation();
+                resolve();
+            }, 8000);
+
             navigator.geolocation.getCurrentPosition(
                 (position) => {
+                    clearTimeout(timeoutId);
                     const { latitude, longitude } = position.coords;
                     const nearest = findNearestPoints(latitude, longitude, 5);
                     this.displayNearestResults(nearest);
                     resolve();
                 },
                 (error) => {
+                    clearTimeout(timeoutId);
+                    console.log('Геолокация недоступна:', error.message);
                     this.showNearestWithoutLocation();
                     resolve();
                 },
                 {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
+                    enableHighAccuracy: false,
+                    timeout: 7000,
                     maximumAge: 60000
                 }
             );
         });
     }
-
     showNearestWithoutLocation() {
         const centerLat = 44.6166;
         const centerLon = 33.5254;
