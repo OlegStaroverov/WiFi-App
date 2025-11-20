@@ -517,26 +517,3 @@ body {
 .loading-btn {
     animation: pulse 1.5s infinite;
 }
-
-/* Стили для прогресс-бара */
-.progress-container {
-    width: 100%;
-    background: #e0e0e0;
-    border-radius: 10px;
-    margin-top: 8px;
-    overflow: hidden;
-}
-
-.progress-bar {
-    height: 4px;
-    background: linear-gradient(90deg, #007AFF, #5856D6);
-    border-radius: 10px;
-    transition: width 0.5s ease;
-    animation: progressGlow 2s infinite;
-}
-
-@keyframes progressGlow {
-    0% { box-shadow: 0 0 5px #007AFF; }
-    50% { box-shadow: 0 0 10px #007AFF; }
-    100% { box-shadow: 0 0 5px #007AFF; }
-}
