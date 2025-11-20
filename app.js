@@ -4,16 +4,19 @@ class SevastopolWifiApp {
         this.currentUser = null;
         this.currentTab = 'map';
         this.selectedRequest = null;
+        this.yamaps = null;
+        this.map = null;
         this.init();
     }
 
-    init() {
+    async init() {
         this.setupEventListeners();
         this.loadUserData();
         this.renderPointsList();
         this.populatePointSelect();
         this.loadUserRequests();
         this.checkAdminStatus();
+        await this.initYandexMap();
     }
 
     setupEventListeners() {
@@ -22,6 +25,72 @@ class SevastopolWifiApp {
             btn.addEventListener('click', (e) => {
                 this.switchTab(e.target.dataset.tab);
             });
+        });
+
+        // Закрытие модального окна при клике вне его
+        document.getElementById('pointModal').addEventListener('click', (e) => {
+            if (e.target.id === 'pointModal') {
+                this.closeModal();
+            }
+        });
+    }
+
+    async initYandexMap() {
+        try {
+            await ymaps3.ready;
+            
+            const {YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker} = ymaps3;
+            
+            // Инициализируем карту
+            this.map = new YMap(
+                document.getElementById('yandexMap'),
+                {
+                    location: {
+                        center: [33.5224, 44.6167], // Центр Севастополя
+                        zoom: 12
+                    }
+                }
+            );
+
+            // Добавляем слои
+            this.map.addChild(new YMapDefaultSchemeLayer());
+            this.map.addChild(new YMapDefaultFeaturesLayer());
+
+            // Добавляем маркеры для всех точек Wi-Fi
+            this.addWifiPointsToMap();
+
+        } catch (error) {
+            console.error('Ошибка инициализации Яндекс.Карт:', error);
+            document.getElementById('yandexMap').innerHTML = 
+                '<div class="map-placeholder">Карта временно недоступна</div>';
+        }
+    }
+
+    addWifiPointsToMap() {
+        if (!this.map || !ymaps3) return;
+
+        const {YMapMarker} = ymaps3;
+
+        wifiPoints.forEach(point => {
+            const markerElement = document.createElement('div');
+            markerElement.className = 'wifi-marker';
+            markerElement.innerHTML = '📶';
+            markerElement.title = point.name;
+            markerElement.style.cursor = 'pointer';
+            
+            markerElement.addEventListener('click', () => {
+                this.showPointDetails(point.id);
+            });
+
+            const marker = new YMapMarker(
+                {
+                    coordinates: [point.coordinates.lon, point.coordinates.lat],
+                    source: 'wifi-source'
+                },
+                markerElement
+            );
+
+            this.map.addChild(marker);
         });
     }
 
@@ -92,6 +161,39 @@ class SevastopolWifiApp {
         `).join('');
     }
 
+    // Поиск точек для выпадающего списка
+    searchPoints(query) {
+        const searchResults = document.getElementById('searchResults');
+        const select = document.getElementById('problemPoint');
+        
+        if (!query.trim()) {
+            searchResults.innerHTML = '';
+            select.style.display = 'block';
+            return;
+        }
+
+        select.style.display = 'none';
+        
+        const results = wifiPoints.filter(point => 
+            point.name.toLowerCase().includes(query.toLowerCase()) ||
+            (point.address && point.address.toLowerCase().includes(query.toLowerCase()))
+        ).slice(0, 5);
+
+        searchResults.innerHTML = results.map(point => `
+            <div class="search-result-item" onclick="app.selectPointForReport(${point.id}, '${point.name.replace(/'/g, "\\'")}')">
+                <strong>${getTypeEmoji(point.type)} ${point.name}</strong>
+                <div class="point-address">${point.address || 'Адрес не указан'}</div>
+            </div>
+        `).join('');
+    }
+
+    selectPointForReport(pointId, pointName) {
+        document.getElementById('problemPoint').value = pointId;
+        document.getElementById('problemPointSearch').value = pointName;
+        document.getElementById('searchResults').innerHTML = '';
+        document.getElementById('problemPoint').style.display = 'block';
+    }
+
     // Заполнение выпадающего списка точек
     populatePointSelect() {
         const select = document.getElementById('problemPoint');
@@ -108,46 +210,69 @@ class SevastopolWifiApp {
         
         btn.innerHTML = '🔄 Определяем местоположение...';
         btn.disabled = true;
-        
+
         try {
+            await this.getBrowserLocation();
+        } catch (error) {
+            this.showNearestWithoutLocation();
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '📍 Найти ближайшие точки';
+        }
+    }
+
+    getBrowserLocation() {
+        return new Promise((resolve, reject) => {
             if (!navigator.geolocation) {
-                throw new Error('Геолокация не поддерживается');
+                reject(new Error('Геолокация не поддерживается'));
+                return;
             }
-            
-            const position = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    const nearest = findNearestPoints(latitude, longitude, 5);
+                    this.displayNearestResults(nearest);
+                    resolve();
+                },
+                (error) => {
+                    this.showNearestWithoutLocation();
+                    resolve();
+                },
+                {
                     enableHighAccuracy: true,
                     timeout: 10000,
                     maximumAge: 60000
-                });
-            });
-            
-            const { latitude, longitude } = position.coords;
-            const nearest = findNearestPoints(latitude, longitude, 5);
-            
-            results.innerHTML = `
-                <h4>🎯 Ближайшие к вам точки:</h4>
-                ${nearest.map(point => `
-                    <div class="result-item">
-                        <strong>${getTypeEmoji(point.type)} ${point.name}</strong><br>
-                        <small>📍 ${point.distance.toFixed(1)} км • ${point.address || 'Адрес не указан'}</small>
-                    </div>
-                `).join('')}
-            `;
-            
-            btn.innerHTML = '📍 Обновить местоположение';
-            
-        } catch (error) {
-            results.innerHTML = `
-                <div style="color: #FF3B30; text-align: center; padding: 20px;">
-                    ❌ Не удалось определить местоположение<br>
-                    <small>${error.message}</small>
-                </div>
-            `;
-            btn.innerHTML = '📍 Попробовать снова';
-        } finally {
-            btn.disabled = false;
+                }
+            );
+        });
+    }
+
+    showNearestWithoutLocation() {
+        const centerLat = 44.6166;
+        const centerLon = 33.5254;
+        const nearest = findNearestPoints(centerLat, centerLon, 5);
+        this.displayNearestResults(nearest, true);
+    }
+
+    displayNearestResults(nearest, usedCenter = false) {
+        const results = document.getElementById('nearestResults');
+        
+        let header = '🎯 Ближайшие точки:';
+        if (usedCenter) {
+            header = '📍 Популярные точки в центре города:';
         }
+        
+        results.innerHTML = `
+            <h4>${header}</h4>
+            ${nearest.map(point => `
+                <div class="result-item" onclick="app.showPointDetails(${point.id})">
+                    <strong>${getTypeEmoji(point.type)} ${point.name}</strong><br>
+                    <small>📍 ${point.distance?.toFixed(1) || '0.5'} км • ${point.address || 'Адрес не указан'}</small>
+                </div>
+            `).join('')}
+            ${usedCenter ? '<small style="color: #666; display: block; margin-top: 8px;">Чтобы видеть расстояния точно, разрешите доступ к геолокации</small>' : ''}
+        `;
     }
 
     // Показать детали точки
@@ -157,6 +282,9 @@ class SevastopolWifiApp {
         
         const modal = document.getElementById('pointModal');
         const details = document.getElementById('pointDetails');
+        
+        const yandexMapUrl = `https://yandex.ru/maps/?pt=${point.coordinates.lon},${point.coordinates.lat}&z=17&l=map`;
+        const yandexNavigatorUrl = `yandexnavi://build_route_on_map?lat_to=${point.coordinates.lat}&lon_to=${point.coordinates.lon}`;
         
         details.innerHTML = `
             <h3>${getTypeEmoji(point.type)} ${point.name}</h3>
@@ -172,18 +300,40 @@ class SevastopolWifiApp {
                 <div class="detail-label">📌 Координаты:</div>
                 <div>${point.coordinates.lat}, ${point.coordinates.lon}</div>
             </div>
-            <button onclick="app.reportSpecificProblem(${pointId})" class="btn primary" style="margin-top: 16px;">
+            <div class="map-preview">
+                <div class="detail-label">🗺️ На карте:</div>
+                <div class="mini-map" style="height: 150px; background: #f5f5f5; border-radius: 8px; margin: 8px 0; display: flex; align-items: center; justify-content: center;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">📍</div>
+                        <div>Точка на карте</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <a href="${yandexMapUrl}" target="_blank" class="btn secondary" style="flex: 1; text-align: center; text-decoration: none;">
+                        📍 Открыть в Яндекс.Картах
+                    </a>
+                    <a href="${yandexNavigatorUrl}" class="btn primary" style="flex: 1; text-align: center; text-decoration: none;">
+                        🚗 Построить маршрут
+                    </a>
+                </div>
+            </div>
+            <button onclick="app.reportSpecificProblem(${pointId})" class="btn primary" style="margin-top: 16px; width: 100%;">
                 🔧 Сообщить о проблеме
             </button>
         `;
         
-        modal.style.display = 'block';
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    closeModal() {
+        document.getElementById('pointModal').style.display = 'none';
+        document.body.style.overflow = 'auto';
     }
 
     // Отправить сообщение о проблеме
     submitProblem() {
         const pointId = document.getElementById('problemPoint').value;
-        const problemType = document.getElementById('problemType').value;
         const description = document.getElementById('problemDesc').value.trim();
         
         if (!pointId || !description) {
@@ -196,7 +346,6 @@ class SevastopolWifiApp {
             id: Date.now(),
             pointId: pointId,
             pointName: point ? point.name : 'Неизвестная точка',
-            problemType: problemType,
             description: description,
             userName: this.currentUser?.first_name || 'Аноним',
             userId: this.currentUser?.id || 'anonymous',
@@ -211,7 +360,7 @@ class SevastopolWifiApp {
         
         // Очистка формы
         document.getElementById('problemPoint').value = '';
-        document.getElementById('problemType').value = 'not_working';
+        document.getElementById('problemPointSearch').value = '';
         document.getElementById('problemDesc').value = '';
         
         this.loadUserRequests();
@@ -220,16 +369,18 @@ class SevastopolWifiApp {
 
     // Отправить предложение новой точки
     submitSuggestion() {
+        const name = document.getElementById('newPointName').value.trim();
         const address = document.getElementById('newPointAddress').value.trim();
         const reason = document.getElementById('newPointReason').value.trim();
         
-        if (!address || !reason) {
+        if (!name || !address || !reason) {
             alert('❌ Заполните все поля');
             return;
         }
         
         const request = {
             id: Date.now(),
+            pointName: name,
             address: address,
             reason: reason,
             userName: this.currentUser?.first_name || 'Аноним',
@@ -244,11 +395,12 @@ class SevastopolWifiApp {
         saveRequests();
         
         // Очистка формы
+        document.getElementById('newPointName').value = '';
         document.getElementById('newPointAddress').value = '';
         document.getElementById('newPointReason').value = '';
         
         this.loadUserRequests();
-        this.showNotification('💡 Предложение отправлено! Спасибо за идею.');
+        this.showNotification('💡 Предложение отправлено! Спасибо за информацию о новой точке Wi-Fi.');
     }
 
     // Загрузка обращений пользователя
@@ -263,7 +415,7 @@ class SevastopolWifiApp {
         
         container.innerHTML = userReqs.map(req => `
             <div class="request-item">
-                <strong>${req.type === 'problem' ? '🔧 ' : '💡 '}${req.pointName || req.address}</strong>
+                <strong>${req.type === 'problem' ? '🔧 ' : '💡 '}${req.pointName || 'Новая точка'}</strong>
                 <div>${req.description || req.reason}</div>
                 <div class="request-meta">
                     📅 ${new Date(req.date).toLocaleDateString()} • 
@@ -272,6 +424,20 @@ class SevastopolWifiApp {
                 </div>
             </div>
         `).join('');
+    }
+
+    // Функция фильтрации точек
+    filterPoints(type) {
+        // Убираем активный класс у всех кнопок
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Добавляем активный класс нажатой кнопке
+        event.target.classList.add('active');
+        
+        // Рендерим отфильтрованный список
+        this.renderPointsList(type);
     }
 
     // Админ-панель
@@ -298,7 +464,7 @@ class SevastopolWifiApp {
         container.innerHTML = adminRequests.map(req => `
             <div class="admin-request-item ${this.selectedRequest?.id === req.id ? 'selected' : ''}" 
                  onclick="app.selectRequest(${req.id})">
-                <strong>${req.type === 'problem' ? '🔧 ' : '💡 '}${req.pointName || req.address}</strong>
+                <strong>${req.type === 'problem' ? '🔧 ' : '💡 '}${req.pointName || 'Новая точка'}</strong>
                 <div style="font-size: 12px; color: #666; margin: 4px 0;">
                     ${req.description || req.reason}
                 </div>
@@ -330,7 +496,7 @@ class SevastopolWifiApp {
             
             <div class="detail-item">
                 <div class="detail-label">Тип:</div>
-                <div>${req.type === 'problem' ? '🔧 Проблема' : '💡 Предложение'}</div>
+                <div>${req.type === 'problem' ? '🔧 Проблема' : '💡 Предложение новой точки'}</div>
             </div>
             
             ${req.type === 'problem' ? `
@@ -338,13 +504,13 @@ class SevastopolWifiApp {
                     <div class="detail-label">Точка Wi-Fi:</div>
                     <div>${req.pointName}</div>
                 </div>
-                <div class="detail-item">
-                    <div class="detail-label">Тип проблемы:</div>
-                    <div>${this.getProblemTypeText(req.problemType)}</div>
-                </div>
             ` : `
                 <div class="detail-item">
-                    <div class="detail-label">Предлагаемый адрес:</div>
+                    <div class="detail-label">Название точки:</div>
+                    <div>${req.pointName}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Адрес:</div>
                     <div>${req.address}</div>
                 </div>
             `}
@@ -385,7 +551,6 @@ class SevastopolWifiApp {
         const request = adminRequests.find(req => req.id === requestId);
         if (request) {
             request.status = newStatus;
-            // Также обновляем в userRequests
             const userReq = userRequests.find(req => req.id === requestId);
             if (userReq) {
                 userReq.status = newStatus;
@@ -407,7 +572,6 @@ class SevastopolWifiApp {
         if (request) {
             request.adminReply = replyText;
             request.status = 'resolved';
-            // Также обновляем в userRequests
             const userReq = userRequests.find(req => req.id === requestId);
             if (userReq) {
                 userReq.adminReply = replyText;
@@ -432,31 +596,25 @@ class SevastopolWifiApp {
         return statuses[status] || status;
     }
 
-    getProblemTypeText(type) {
-        const types = {
-            'not_working': 'Точка не работает',
-            'weak_signal': 'Плохой сигнал',
-            'no_auth': 'Не открывается авторизация',
-            'other': 'Другое'
-        };
-        return types[type] || type;
-    }
-
     showNotification(message) {
-        // Простое уведомление
         alert(message);
     }
 
     reportSpecificProblem(pointId) {
         this.switchTab('report');
         document.getElementById('problemPoint').value = pointId;
+        const point = wifiPoints.find(p => p.id === pointId);
+        if (point) {
+            document.getElementById('problemPointSearch').value = point.name;
+        }
         document.getElementById('problemDesc').focus();
+        this.closeModal();
     }
 }
 
 // Глобальные функции для HTML onclick
 function filterPoints(type) {
-    app.renderPointsList(type);
+    app.filterPoints(type);
 }
 
 function findNearestPoints() {
@@ -472,7 +630,7 @@ function submitSuggestion() {
 }
 
 function closeModal() {
-    document.getElementById('pointModal').style.display = 'none';
+    app.closeModal();
 }
 
 // Инициализация приложения
