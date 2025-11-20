@@ -16,6 +16,7 @@ body {
     margin: 0 auto;
     background: white;
     min-height: 100vh;
+    position: relative;
 }
 
 /* Шапка */
@@ -119,6 +120,7 @@ body {
 /* Формы */
 .form-group {
     margin-bottom: 16px;
+    position: relative;
 }
 
 .form-group label {
@@ -142,12 +144,44 @@ body {
     border-color: #007AFF;
 }
 
+/* Поисковые результаты */
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.search-result-item {
+    padding: 12px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.search-result-item:hover {
+    background-color: #f8f9fa;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
 /* Фильтры */
 .filters {
     display: flex;
     gap: 8px;
     margin-bottom: 16px;
     flex-wrap: wrap;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 .filter-btn {
@@ -158,12 +192,13 @@ body {
     cursor: pointer;
     font-size: 14px;
     transition: all 0.3s ease;
+    white-space: nowrap;
 }
 
 .filter-btn.active {
-    background: #007AFF;
-    color: white;
-    border-color: #007AFF;
+    background: #007AFF !important;
+    color: white !important;
+    border-color: #007AFF !important;
 }
 
 /* Списки */
@@ -220,9 +255,16 @@ body {
     text-align: center;
 }
 
-.map-points-list {
-    margin-top: 16px;
-    width: 100%;
+/* Маркеры Wi-Fi */
+.wifi-marker {
+    font-size: 20px;
+    cursor: pointer;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    transition: transform 0.2s ease;
+}
+
+.wifi-marker:hover {
+    transform: scale(1.2);
 }
 
 /* Админ-панель */
@@ -352,18 +394,21 @@ body {
     width: 100%;
     height: 100%;
     background-color: rgba(0,0,0,0.5);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
 }
 
 .modal-content {
     background-color: white;
-    margin: 5% auto;
     padding: 20px;
     border-radius: 12px;
-    width: 90%;
+    width: 100%;
     max-width: 400px;
     max-height: 80vh;
     overflow-y: auto;
     position: relative;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
 }
 
 .close {
@@ -372,6 +417,10 @@ body {
     font-size: 28px;
     font-weight: bold;
     cursor: pointer;
+    position: absolute;
+    right: 15px;
+    top: 10px;
+    z-index: 10;
 }
 
 .close:hover {
@@ -389,6 +438,11 @@ body {
     border-radius: 8px;
     margin-bottom: 8px;
     background: #f8f9fa;
+    cursor: pointer;
+}
+
+.result-item:hover {
+    background: #e9ecef;
 }
 
 /* Запросы */
@@ -411,6 +465,12 @@ body {
     margin-top: 4px;
 }
 
+/* Мини-карта в модальном окне */
+.mini-map {
+    background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
+    border: 2px solid #007AFF;
+}
+
 /* Утилиты */
 .hidden {
     display: none !important;
@@ -430,5 +490,19 @@ body {
     
     .app {
         border-radius: 0;
+    }
+    
+    .filters {
+        max-height: 150px;
+    }
+    
+    .filter-btn {
+        font-size: 12px;
+        padding: 6px 10px;
+    }
+    
+    .modal-content {
+        margin: 10px;
+        padding: 15px;
     }
 }
