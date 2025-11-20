@@ -4,9 +4,12 @@ class SevastopolWifiApp {
         this.currentUser = null;
         this.currentTab = 'map';
         this.selectedRequest = null;
-        this.yamaps = null;
         this.map = null;
-        this.init();
+        
+        // Запускаем инициализацию с задержкой чтобы DOM точно был готов
+        setTimeout(() => {
+            this.init();
+        }, 500);
     }
 
     async init() {
@@ -17,10 +20,8 @@ class SevastopolWifiApp {
         this.loadUserRequests();
         this.checkAdminStatus();
         
-        // Инициализируем карту с задержкой чтобы DOM точно был готов
-        setTimeout(() => {
-            this.initYandexMap();
-        }, 1000);
+        // Пробуем инициализировать карту
+        this.initYandexMap();
     }
 
     setupEventListeners() {
@@ -43,18 +44,26 @@ class SevastopolWifiApp {
         try {
             console.log('🔄 Инициализация Яндекс.Карт...');
             
-            // Ждем загрузку API
+            // Проверяем что API загрузилось
+            if (typeof ymaps3 === 'undefined') {
+                throw new Error('Yandex Maps API не загружен');
+            }
+            
+            // Ждем готовность API
             await ymaps3.ready;
             console.log('✅ Яндекс.Карты API загружены');
             
             const {YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker} = ymaps3;
 
+            // Создаем контейнер для карты
+            const mapContainer = document.getElementById('yandexMap');
+            
             // Инициализируем карту
             this.map = new YMap(
-                document.getElementById('yandexMap'),
+                mapContainer,
                 {
                     location: {
-                        center: [33.5224, 44.6167], // [долгота, широта] - СЕВАСТОПОЛЬ
+                        center: [33.5224, 44.6167], // [долгота, широта]
                         zoom: 12
                     }
                 }
@@ -64,99 +73,104 @@ class SevastopolWifiApp {
             this.map.addChild(new YMapDefaultSchemeLayer());
             this.map.addChild(new YMapDefaultFeaturesLayer());
             
-            console.log('✅ Карта создана, добавляем маркеры...');
+            console.log('✅ Карта создана');
             
-            // Добавляем маркеры точек Wi-Fi
+            // Добавляем маркеры
             this.addWifiPointsToMap();
-            
-            console.log('✅ Яндекс.Карты полностью инициализированы');
 
         } catch (error) {
             console.error('❌ Ошибка Яндекс.Карт:', error);
-            // Fallback - показываем информационный текст
-            document.getElementById('yandexMap').innerHTML = `
-                <div class="map-placeholder">
-                    <div style="font-size: 48px; margin-bottom: 16px;">🗺️</div>
-                    <h3>Карта точек Wi-Fi Севастополя</h3>
-                    <p>Для отображения карты необходим API-ключ Яндекс.Карт</p>
-                    <button onclick="app.showPointDetails(1)" class="btn primary" style="margin-top: 16px;">
-                        📋 Посмотреть список точек
-                    </button>
-                </div>
-            `;
+            this.showMapFallback();
         }
     }
 
+    // Функция fallback для карты
+    showMapFallback() {
+        const mapContainer = document.getElementById('yandexMap');
+        mapContainer.innerHTML = `
+            <div class="map-placeholder" style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">🗺️</div>
+                <h3 style="margin-bottom: 8px;">Карта точек Wi-Fi</h3>
+                <p style="color: #666; margin-bottom: 16px;">Используйте поиск ближайших точек или просмотрите список</p>
+                <button onclick="app.switchTab('list')" class="btn primary">
+                    📋 Открыть список точек
+                </button>
+            </div>
+        `;
+    }
+
     addWifiPointsToMap() {
-        if (!this.map) {
-            console.error('❌ Карта не инициализирована');
+        if (!this.map || typeof ymaps3 === 'undefined') {
+            console.log('Карта не готова для добавления маркеров');
             return;
         }
 
         const {YMapMarker} = ymaps3;
 
-        // Берем только первые 20 точек для теста
-        const pointsToShow = wifiPoints.slice(0, 20);
+        // Берем только первые 10 точек для теста
+        const testPoints = wifiPoints.slice(0, 10);
         
-        pointsToShow.forEach(point => {
-            try {
-                const markerElement = document.createElement('div');
-                markerElement.className = 'wifi-marker';
-                markerElement.innerHTML = '📶';
-                markerElement.title = point.name;
-                markerElement.style.cssText = `
-                    font-size: 24px;
-                    cursor: pointer;
-                    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-                    transition: transform 0.2s ease;
-                `;
-                
-                markerElement.addEventListener('click', () => {
-                    this.showPointDetails(point.id);
-                });
+        testPoints.forEach(point => {
+            const markerElement = document.createElement('div');
+            markerElement.innerHTML = '📶';
+            markerElement.style.cssText = `
+                font-size: 24px;
+                cursor: pointer;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            `;
+            
+            markerElement.addEventListener('click', () => {
+                this.showPointDetails(point.id);
+            });
 
-                markerElement.addEventListener('mouseenter', () => {
-                    markerElement.style.transform = 'scale(1.3)';
-                });
+            const marker = new YMapMarker(
+                {
+                    coordinates: [point.coordinates.lon, point.coordinates.lat],
+                },
+                markerElement
+            );
 
-                markerElement.addEventListener('mouseleave', () => {
-                    markerElement.style.transform = 'scale(1)';
-                });
-
-                const marker = new YMapMarker(
-                    {
-                        coordinates: [point.coordinates.lon, point.coordinates.lat],
-                    },
-                    markerElement
-                );
-
-                this.map.addChild(marker);
-                
-            } catch (error) {
-                console.error(`❌ Ошибка создания маркера для точки ${point.id}:`, error);
-            }
+            this.map.addChild(marker);
         });
         
-        console.log(`✅ Добавлено ${pointsToShow.length} маркеров на карту`);
+        console.log(`✅ Добавлено ${testPoints.length} маркеров`);
     }
 
     loadUserData() {
         try {
-            if (window.WebApp && window.WebApp.initDataUnsafe) {
+            // Проверяем доступен ли WebApp объект
+            if (window.WebApp && window.WebApp.initDataUnsafe && window.WebApp.initDataUnsafe.user) {
                 this.currentUser = window.WebApp.initDataUnsafe.user;
+                const userName = this.currentUser.first_name || this.currentUser.username || 'Пользователь';
                 document.getElementById('userInfo').innerHTML = `
-                    <span>👤 ${this.currentUser.first_name || 'Пользователь'}</span>
+                    <span>👤 ${userName}</span>
                 `;
-                window.WebApp.ready();
+                // Сообщаем MAX что приложение готово
+                if (window.WebApp.ready) {
+                    window.WebApp.ready();
+                }
             } else {
-                // Режим разработки
-                this.currentUser = { id: 'demo', first_name: 'Демо пользователь' };
+                // Режим разработки - создаем заглушку
+                console.log('🔧 Режим разработки - WebApp не доступен');
+                this.currentUser = { 
+                    id: 'demo_user', 
+                    first_name: 'Демо пользователь',
+                    username: 'demo'
+                };
                 document.getElementById('userInfo').innerHTML = `
                     <span>👤 Демо режим</span>
                 `;
             }
         } catch (error) {
             console.error('Ошибка загрузки пользователя:', error);
+            // Fallback на демо режим
+            this.currentUser = { 
+                id: 'error_user', 
+                first_name: 'Гость'
+            };
+            document.getElementById('userInfo').innerHTML = `
+                <span>👤 Гость</span>
+            `;
         }
     }
 
