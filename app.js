@@ -4,24 +4,16 @@ class SevastopolWifiApp {
         this.currentUser = null;
         this.currentTab = 'map';
         this.selectedRequest = null;
-        this.map = null;
-        
-        // Запускаем инициализацию с задержкой чтобы DOM точно был готов
-        setTimeout(() => {
-            this.init();
-        }, 500);
+        this.init();
     }
 
-    async init() {
+    init() {
         this.setupEventListeners();
         this.loadUserData();
         this.renderPointsList();
         this.populatePointSelect();
         this.loadUserRequests();
         this.checkAdminStatus();
-        
-        // Пробуем инициализировать карту
-        this.initYandexMap();
     }
 
     setupEventListeners() {
@@ -40,122 +32,22 @@ class SevastopolWifiApp {
         });
     }
 
-    async initYandexMap() {
-        try {
-            console.log('🔄 Инициализация Яндекс.Карт...');
-            
-            // Проверяем что API загрузилось
-            if (typeof ymaps3 === 'undefined') {
-                throw new Error('Yandex Maps API не загружен');
-            }
-            
-            // Ждем готовность API
-            await ymaps3.ready;
-            console.log('✅ Яндекс.Карты API загружены');
-            
-            const {YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker} = ymaps3;
-
-            // Создаем контейнер для карты
-            const mapContainer = document.getElementById('yandexMap');
-            
-            // Инициализируем карту
-            this.map = new YMap(
-                mapContainer,
-                {
-                    location: {
-                        center: [33.5224, 44.6167], // [долгота, широта]
-                        zoom: 12
-                    }
-                }
-            );
-
-            // Добавляем слои
-            this.map.addChild(new YMapDefaultSchemeLayer());
-            this.map.addChild(new YMapDefaultFeaturesLayer());
-            
-            console.log('✅ Карта создана');
-            
-            // Добавляем маркеры
-            this.addWifiPointsToMap();
-
-        } catch (error) {
-            console.error('❌ Ошибка Яндекс.Карт:', error);
-            this.showMapFallback();
-        }
-    }
-
-    // Функция fallback для карты
-    showMapFallback() {
-        const mapContainer = document.getElementById('yandexMap');
-        mapContainer.innerHTML = `
-            <div class="map-placeholder" style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px;">
-                <div style="font-size: 48px; margin-bottom: 16px;">🗺️</div>
-                <h3 style="margin-bottom: 8px;">Карта точек Wi-Fi</h3>
-                <p style="color: #666; margin-bottom: 16px;">Используйте поиск ближайших точек или просмотрите список</p>
-                <button onclick="app.switchTab('list')" class="btn primary">
-                    📋 Открыть список точек
-                </button>
-            </div>
-        `;
-    }
-
-    addWifiPointsToMap() {
-        if (!this.map || typeof ymaps3 === 'undefined') {
-            console.log('Карта не готова для добавления маркеров');
-            return;
-        }
-
-        const {YMapMarker} = ymaps3;
-
-        // Берем только первые 10 точек для теста
-        const testPoints = wifiPoints.slice(0, 10);
-        
-        testPoints.forEach(point => {
-            const markerElement = document.createElement('div');
-            markerElement.innerHTML = '📶';
-            markerElement.style.cssText = `
-                font-size: 24px;
-                cursor: pointer;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            `;
-            
-            markerElement.addEventListener('click', () => {
-                this.showPointDetails(point.id);
-            });
-
-            const marker = new YMapMarker(
-                {
-                    coordinates: [point.coordinates.lon, point.coordinates.lat],
-                },
-                markerElement
-            );
-
-            this.map.addChild(marker);
-        });
-        
-        console.log(`✅ Добавлено ${testPoints.length} маркеров`);
-    }
-
     loadUserData() {
         try {
-            // Проверяем доступен ли WebApp объект
             if (window.WebApp && window.WebApp.initDataUnsafe && window.WebApp.initDataUnsafe.user) {
                 this.currentUser = window.WebApp.initDataUnsafe.user;
                 const userName = this.currentUser.first_name || this.currentUser.username || 'Пользователь';
                 document.getElementById('userInfo').innerHTML = `
                     <span>👤 ${userName}</span>
                 `;
-                // Сообщаем MAX что приложение готово
                 if (window.WebApp.ready) {
                     window.WebApp.ready();
                 }
             } else {
-                // Режим разработки - создаем заглушку
-                console.log('🔧 Режим разработки - WebApp не доступен');
+                // Режим разработки
                 this.currentUser = { 
                     id: 'demo_user', 
-                    first_name: 'Демо пользователь',
-                    username: 'demo'
+                    first_name: 'Демо пользователь'
                 };
                 document.getElementById('userInfo').innerHTML = `
                     <span>👤 Демо режим</span>
@@ -163,7 +55,6 @@ class SevastopolWifiApp {
             }
         } catch (error) {
             console.error('Ошибка загрузки пользователя:', error);
-            // Fallback на демо режим
             this.currentUser = { 
                 id: 'error_user', 
                 first_name: 'Гость'
@@ -269,7 +160,7 @@ class SevastopolWifiApp {
         const results = document.getElementById('nearestResults');
         
         const originalText = btn.innerHTML;
-        const loadingStages = [
+        const loadingMessages = [
             '📍 Определяем местоположение...',
             '🗺️ Сканируем карту...', 
             '📡 Ищем ближайшие точки Wi-Fi...',
@@ -283,35 +174,28 @@ class SevastopolWifiApp {
         // Функция для плавной смены сообщений
         const startLoadingAnimation = () => {
             messageInterval = setInterval(() => {
-                if (currentStage < loadingStages.length - 1) {
+                if (currentStage < loadingMessages.length - 1) {
                     currentStage++;
-                    btn.innerHTML = loadingStages[currentStage];
+                    btn.innerHTML = loadingMessages[currentStage];
                 } else {
-                    // Достигли последнего сообщения - останавливаемся на нем
                     clearInterval(messageInterval);
                 }
-            }, 2000); // Меняем каждые 2 секунды
+            }, 2000);
         };
         
         btn.disabled = true;
-        btn.innerHTML = loadingStages[0];
+        btn.innerHTML = loadingMessages[0];
         startLoadingAnimation();
         
         try {
-            // Запускаем поиск и ждем его завершения
             const searchPromise = this.getBrowserLocation();
-            
-            // Если поиск завершится быстрее чем анимация - прерываем анимацию
             await searchPromise;
-            
-            // Поиск завершился - останавливаем анимацию
             clearInterval(messageInterval);
             
         } catch (error) {
             console.error('Ошибка поиска:', error);
             this.showNearestWithoutLocation();
         } finally {
-            // Всегда возвращаем кнопку в исходное состояние
             clearInterval(messageInterval);
             btn.disabled = false;
             btn.innerHTML = originalText;
@@ -326,11 +210,10 @@ class SevastopolWifiApp {
                 return;
             }
 
-            // Таймаут 8 секунд
             const timeoutId = setTimeout(() => {
                 this.showNearestWithoutLocation();
                 resolve();
-            }, 8000);
+            }, 10000);
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -348,12 +231,13 @@ class SevastopolWifiApp {
                 },
                 {
                     enableHighAccuracy: false,
-                    timeout: 7000,
+                    timeout: 8000,
                     maximumAge: 60000
                 }
             );
         });
     }
+
     showNearestWithoutLocation() {
         const centerLat = 44.6166;
         const centerLon = 33.5254;
@@ -364,7 +248,7 @@ class SevastopolWifiApp {
     displayNearestResults(nearest, usedCenter = false) {
         const results = document.getElementById('nearestResults');
         
-        let header = '🎯 Ближайшие точки:';
+        let header = '🎯 Ближайшие точки Wi-Fi:';
         if (usedCenter) {
             header = '📍 Популярные точки в центре города:';
         }
@@ -372,12 +256,24 @@ class SevastopolWifiApp {
         results.innerHTML = `
             <h4>${header}</h4>
             ${nearest.map(point => `
-                <div class="result-item" onclick="app.showPointDetails(${point.id})">
-                    <strong>${getTypeEmoji(point.type)} ${point.name}</strong><br>
-                    <small>📍 ${point.distance?.toFixed(1) || '0.5'} км • ${point.address || 'Адрес не указан'}</small>
+                <div class="result-item">
+                    <div class="result-header">
+                        <div class="result-name">${getTypeEmoji(point.type)} ${point.name}</div>
+                        <div class="result-distance">${point.distance?.toFixed(1) || '0.5'} км</div>
+                    </div>
+                    <div class="result-address">${point.address || 'Адрес не указан'}</div>
+                    <div class="point-description">${point.description}</div>
+                    <div class="result-actions">
+                        <button class="result-btn secondary" onclick="app.showPointDetails(${point.id})">
+                            📝 Подробнее
+                        </button>
+                        <button class="result-btn primary" onclick="app.openYandexMaps(${point.id})">
+                            🗺️ Маршрут
+                        </button>
+                    </div>
                 </div>
             `).join('')}
-            ${usedCenter ? '<small style="color: #666; display: block; margin-top: 8px;">Чтобы видеть расстояния точно, разрешите доступ к геолокации</small>' : ''}
+            ${usedCenter ? '<small style="color: #666; display: block; margin-top: 8px;">Чтобы видеть точные расстояния, разрешите доступ к геолокации</small>' : ''}
         `;
     }
 
@@ -406,22 +302,13 @@ class SevastopolWifiApp {
                 <div class="detail-label">📌 Координаты:</div>
                 <div>${point.coordinates.lat}, ${point.coordinates.lon}</div>
             </div>
-            <div class="map-preview">
-                <div class="detail-label">🗺️ На карте:</div>
-                <div class="mini-map" style="height: 150px; background: #f5f5f5; border-radius: 8px; margin: 8px 0; display: flex; align-items: center; justify-content: center;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">📍</div>
-                        <div>Точка на карте</div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 8px; margin-top: 8px;">
-                    <a href="${yandexMapUrl}" target="_blank" class="btn secondary" style="flex: 1; text-align: center; text-decoration: none;">
-                        📍 Открыть в Яндекс.Картах
-                    </a>
-                    <a href="${yandexNavigatorUrl}" class="btn primary" style="flex: 1; text-align: center; text-decoration: none;">
-                        🚗 Построить маршрут
-                    </a>
-                </div>
+            <div style="display: flex; gap: 8px; margin-top: 20px;">
+                <a href="${yandexMapUrl}" target="_blank" class="btn secondary" style="flex: 1; text-align: center; text-decoration: none;">
+                    📍 Яндекс.Карты
+                </a>
+                <a href="${yandexNavigatorUrl}" class="btn primary" style="flex: 1; text-align: center; text-decoration: none;">
+                    🚗 Маршрут
+                </a>
             </div>
             <button onclick="app.reportSpecificProblem(${pointId})" class="btn primary" style="margin-top: 16px; width: 100%;">
                 🔧 Сообщить о проблеме
@@ -430,6 +317,15 @@ class SevastopolWifiApp {
         
         modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
+    }
+
+    // Открыть Яндекс.Карты для точки
+    openYandexMaps(pointId) {
+        const point = wifiPoints.find(p => p.id === pointId);
+        if (!point) return;
+        
+        const yandexMapUrl = `https://yandex.ru/maps/?pt=${point.coordinates.lon},${point.coordinates.lat}&z=17&l=map`;
+        window.open(yandexMapUrl, '_blank');
     }
 
     closeModal() {
@@ -534,15 +430,11 @@ class SevastopolWifiApp {
 
     // Функция фильтрации точек
     filterPoints(type) {
-        // Убираем активный класс у всех кнопок
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.classList.remove('active');
         });
         
-        // Добавляем активный класс нажатой кнопке
         event.target.classList.add('active');
-        
-        // Рендерим отфильтрованный список
         this.renderPointsList(type);
     }
 
