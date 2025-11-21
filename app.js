@@ -5,7 +5,6 @@ class SevastopolWifiApp {
         this.currentTab = 'map';
         this.selectedRequest = null;
         this.isSearching = false;
-        this.searchAnimation = null;
         this.init();
     }
 
@@ -156,7 +155,7 @@ class SevastopolWifiApp {
             ).join('');
     }
 
-    // Поиск ближайших точек - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Поиск ближайших точек - ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ РАБОЧИЙ МЕТОД
     async findNearestPoints() {
         if (this.isSearching) {
             return;
@@ -165,102 +164,100 @@ class SevastopolWifiApp {
         const btn = document.getElementById('findBtn');
         const results = document.getElementById('nearestResults');
         
-        const originalText = btn.innerHTML;
-        
-        // Сообщения для анимации поиска
-        const loadingMessages = [
-            '📍 Определяем местоположение...',
-            '🗺️ Сканируем карту...', 
-            '📡 Ищем ближайшие точки Wi-Fi...',
-            '🔍 Анализируем расстояние...'
-        ];
-        
         this.isSearching = true;
         btn.disabled = true;
-        
-        let currentStage = 0;
-        
-        // Функция для плавной смены сообщений
-        const startLoadingAnimation = () => {
-            this.searchAnimation = setInterval(() => {
-                if (currentStage < loadingMessages.length - 1) {
-                    currentStage++;
-                    btn.innerHTML = loadingMessages[currentStage];
-                } else {
-                    // Достигли последнего сообщения - остаемся на нем
-                    clearInterval(this.searchAnimation);
-                }
-            }, 3000); // Увеличил интервал до 3 секунд для плавности
-        };
-        
-        // Начинаем с первого сообщения
-        btn.innerHTML = loadingMessages[0];
-        startLoadingAnimation();
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '📍 Определяем местоположение...';
         
         try {
-            // Используем улучшенный метод получения геолокации
-            const position = await this.getBrowserLocationWithTimeout(10000);
-            
-            if (position) {
-                const { latitude, longitude } = position.coords;
-                const nearest = findNearestPoints(latitude, longitude, 5);
+            // Проверяем поддержку геолокации
+            if (!navigator.geolocation) {
+                this.showGeolocationNotSupported();
+                return;
+            }
+
+            // Запрашиваем геолокацию с таймаутом
+            const position = await new Promise((resolve, reject) => {
+                const options = {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 60000
+                };
+
+                navigator.geolocation.getCurrentPosition(resolve, reject, options);
+            });
+
+            if (position && position.coords) {
+                const nearest = findNearestPoints(
+                    position.coords.latitude, 
+                    position.coords.longitude, 
+                    5
+                );
                 this.displayNearestResults(nearest, false);
             } else {
-                // Если геолокация недоступна, показываем популярные точки
                 this.showNearestWithoutLocation();
             }
             
         } catch (error) {
-            console.error('Ошибка поиска:', error);
-            this.showNearestWithoutLocation();
+            console.error('Ошибка геолокации:', error);
+            this.showGeolocationError(error);
         } finally {
-            // Завершаем анимацию и восстанавливаем кнопку
-            this.stopSearchAnimation();
             btn.disabled = false;
             btn.innerHTML = originalText;
             this.isSearching = false;
         }
     }
 
-    // Улучшенный метод получения геолокации с таймаутом
-    getBrowserLocationWithTimeout(timeout) {
-        return new Promise((resolve, reject) => {
-            if (!navigator.geolocation) {
-                resolve(null);
-                return;
-            }
-
-            const options = {
-                enableHighAccuracy: false,
-                timeout: timeout,
-                maximumAge: 60000
-            };
-
-            const timeoutId = setTimeout(() => {
-                resolve(null);
-            }, timeout);
-
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    clearTimeout(timeoutId);
-                    resolve(position);
-                },
-                (error) => {
-                    clearTimeout(timeoutId);
-                    console.log('Геолокация недоступна:', error.message);
-                    resolve(null);
-                },
-                options
-            );
-        });
+    // Показать ошибку "геолокация не поддерживается"
+    showGeolocationNotSupported() {
+        const results = document.getElementById('nearestResults');
+        results.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: #666;">
+                <h4>❌ Геолокация не поддерживается</h4>
+                <p>Ваш браузер не поддерживает определение местоположения</p>
+                <button onclick="app.showNearestWithoutLocation()" class="btn primary" style="margin-top: 10px;">
+                    📍 Показать популярные точки
+                </button>
+            </div>
+        `;
     }
 
-    // Остановка анимации поиска
-    stopSearchAnimation() {
-        if (this.searchAnimation) {
-            clearInterval(this.searchAnimation);
-            this.searchAnimation = null;
+    // Показать ошибку геолокации
+    showGeolocationError(error) {
+        const results = document.getElementById('nearestResults');
+        
+        let errorMessage = 'Не удалось определить ваше местоположение';
+        let errorDetails = 'Попробуйте еще раз или выберите точки из списка';
+        
+        switch(error.code) {
+            case 1: // PERMISSION_DENIED
+                errorMessage = 'Доступ к геолокации запрещен';
+                errorDetails = 'Разрешите доступ к геолокации в настройках браузера или приложения';
+                break;
+            case 2: // POSITION_UNAVAILABLE
+                errorMessage = 'Информация о местоположении недоступна';
+                errorDetails = 'Проверьте подключение к интернету и GPS';
+                break;
+            case 3: // TIMEOUT
+                errorMessage = 'Время ожидания истекло';
+                errorDetails = 'Попробуйте еще раз или выберите точки из списка';
+                break;
         }
+        
+        results.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: #666;">
+                <h4>❌ ${errorMessage}</h4>
+                <p>${errorDetails}</p>
+                <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
+                    <button onclick="app.findNearestPoints()" class="btn primary">
+                        🔄 Попробовать снова
+                    </button>
+                    <button onclick="app.showNearestWithoutLocation()" class="btn secondary">
+                        📍 Показать популярные точки
+                    </button>
+                </div>
+            </div>
+        `;
     }
 
     showNearestWithoutLocation() {
@@ -273,6 +270,16 @@ class SevastopolWifiApp {
     displayNearestResults(nearest, usedCenter = false) {
         const results = document.getElementById('nearestResults');
         
+        if (!nearest || !Array.isArray(nearest) || nearest.length === 0) {
+            results.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    <h4>❌ Точки не найдены</h4>
+                    <p>Попробуйте еще раз или выберите точки из списка</p>
+                </div>
+            `;
+            return;
+        }
+        
         let header = '🎯 Ближайшие точки Wi-Fi:';
         if (usedCenter) {
             header = '📍 Популярные точки в центре города:';
@@ -284,7 +291,7 @@ class SevastopolWifiApp {
                 <div class="result-item">
                     <div class="result-header">
                         <div class="result-name">${getTypeEmoji(point.type)} ${point.name}</div>
-                        <div class="result-distance">${point.distance?.toFixed(1) || '0.5'} км</div>
+                        <div class="result-distance">${point.distance ? point.distance.toFixed(1) : '0.5'} км</div>
                     </div>
                     <div class="result-address">${point.address || 'Адрес не указан'}</div>
                     <div class="point-description">${point.description}</div>
@@ -302,7 +309,7 @@ class SevastopolWifiApp {
         `;
     }
 
-    // Показать детали точки - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Показать детали точки
     showPointDetails(pointId) {
         const point = wifiPoints.find(p => p.id === pointId);
         if (!point) return;
@@ -350,7 +357,13 @@ class SevastopolWifiApp {
         if (!point) return;
         
         const yandexMapUrl = `https://yandex.ru/maps/?pt=${point.coordinates.lon},${point.coordinates.lat}&z=17&l=map`;
-        window.open(yandexMapUrl, '_blank');
+        
+        // В MAX мини-приложении используем специальный метод для открытия ссылок
+        if (window.WebApp && window.WebApp.openLink) {
+            window.WebApp.openLink(yandexMapUrl);
+        } else {
+            window.open(yandexMapUrl, '_blank');
+        }
     }
 
     closeModal() {
