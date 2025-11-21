@@ -1898,89 +1898,124 @@ let adminRequests = JSON.parse(localStorage.getItem('admin_requests')) || [];
 
 // 🎯 Вспомогательные функции
 function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
+    const R = 6371; // Радиус Земли в км
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
         Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
         Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+    const distance = R * c;
+    return distance;
 }
 
-function findNearestPoints(lat, lon, count = 5) {
+function findNearestPoints(lat, lon, count = 3) {
+    console.log('Поиск точек для координат:', lat, lon);
+    
     // Проверяем что координаты валидны
-    if (typeof lat !== 'number' || typeof lon !== 'number' || 
-        isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0) {
+    if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {
         console.error('Некорректные координаты:', lat, lon);
-        return wifiPoints.slice(0, count).map(point => ({...point, distance: 0}));
+        // Возвращаем первые точки из списка как fallback
+        return wifiPoints.slice(0, count).map(point => ({
+            ...point,
+            distance: 0.5
+        }));
     }
     
     try {
+        // Добавляем расстояние к каждой точке
         const pointsWithDistance = wifiPoints.map(point => {
-            const distance = calculateDistance(lat, lon, point.coordinates.lat, point.coordinates.lon);
-            return {
-                ...point,
-                distance: distance
-            };
+            try {
+                const distance = calculateDistance(lat, lon, point.coordinates.lat, point.coordinates.lon);
+                return {
+                    ...point,
+                    distance: distance
+                };
+            } catch (error) {
+                console.error('Ошибка расчета расстояния для точки:', point.id, error);
+                return {
+                    ...point,
+                    distance: 10 // Большое расстояние по умолчанию
+                };
+            }
         });
         
-        return pointsWithDistance
-            .sort((a, b) => a.distance - b.distance)
-            .slice(0, count);
+        // Сортируем по расстоянию и берем первые count точек
+        const sortedPoints = pointsWithDistance.sort((a, b) => {
+            return a.distance - b.distance;
+        });
+        
+        const result = sortedPoints.slice(0, count);
+        console.log('Найдено точек:', result.length);
+        console.log('Результат поиска:', result);
+        
+        return result;
+        
     } catch (error) {
-        console.error('Ошибка при поиске ближайших точек:', error);
-        return wifiPoints.slice(0, count).map(point => ({...point, distance: 0}));
+        console.error('Критическая ошибка при поиске ближайших точек:', error);
+        // Всегда возвращаем точки, даже при ошибке
+        return wifiPoints.slice(0, count).map(point => ({
+            ...point,
+            distance: 1.0
+        }));
     }
 }
 
 function getTypeEmoji(type) {
     const emojis = {
-    'здрав': '🏥',
-    'образование': '🎓',
-    'тц': '🛍️',
-    'отдых': '🌳',
-    'парки и скверы': '🌳',
-    'транспорт': '🚌',
-    'спорт': '⚽',
-    'МФЦ': '🏢',
-    'АЗС': '⛽',
-    'гостиница': '🏨',
-    'пляж': '🏖️',
-    'турбаза': '⛺',
-    'дома': '🏘️',
-    'кафе': '🍴',
-    '': '📍'
+        'здрав': '🏥',
+        'образование': '🎓',
+        'тц': '🛍️',
+        'отдых': '🌳',
+        'парки и скверы': '🌳',
+        'транспорт': '🚌',
+        'спорт': '⚽',
+        'МФЦ': '🏢',
+        'АЗС': '⛽',
+        'гостиница': '🏨',
+        'пляж': '🏖️',
+        'турбаза': '⛺',
+        'дома': '🏘️',
+        'кафе': '🍴',
+        'торговля': '🛒',
+        '': '📍'
     };
     return emojis[type] || '📍';
 }
 
 function getTypeName(type) {
     const names = {
-    'здрав': 'Медицинские организации',
-    'образование': 'Школы, ВУЗы, юношеские клубы', 
-    'тц': 'Торговые центры, рынки, магазины',
-    'отдых': 'Развлечения, достопримечательности',
-    'парки и скверы': 'Парки и скверы',
-    'транспорт': 'Остановки',
-    'спорт': 'Спорт',
-    'МФЦ': 'МФЦ',
-    'АЗС': 'АЗС',
-    'гостиница': 'Гостиницы',
-    'пляж': 'Пляжи',
-    'турбаза': 'Турбазы',
-    'дома': 'Жилые комплексы',
-    'кафе': 'Кафе',
-    '': 'Другое'
-  };
+        'здрав': 'Медицинские организации',
+        'образование': 'Школы, ВУЗы, юношеские клубы',
+        'тц': 'Торговые центры, рынки, магазины',
+        'отдых': 'Развлечения, достопримечательности',
+        'парки и скверы': 'Парки и скверы',
+        'транспорт': 'Остановки',
+        'спорт': 'Спорт',
+        'МФЦ': 'МФЦ',
+        'АЗС': 'АЗС',
+        'гостиница': 'Гостиницы',
+        'пляж': 'Пляжи',
+        'турбаза': 'Турбазы',
+        'дома': 'Жилые комплексы',
+        'кафе': 'Кафе',
+        'торговля': 'Магазины',
+        '': 'Другое'
+    };
     return names[type] || 'Другое';
 }
 
 function saveRequests() {
-    localStorage.setItem('wifi_requests', JSON.stringify(userRequests));
-    localStorage.setItem('admin_requests', JSON.stringify(adminRequests));
+    try {
+        localStorage.setItem('wifi_requests', JSON.stringify(userRequests));
+        localStorage.setItem('admin_requests', JSON.stringify(adminRequests));
+    } catch (error) {
+        console.error('Ошибка сохранения заявок:', error);
+    }
 }
 
 function isAdmin(userId) {
+    if (!userId) return false;
     return ADMIN_USER_IDS.includes(userId.toString());
 }
