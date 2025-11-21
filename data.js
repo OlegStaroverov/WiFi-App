@@ -1909,13 +1909,29 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 function findNearestPoints(lat, lon, count = 5) {
-    return wifiPoints
-        .map(point => ({
-            ...point,
-            distance: calculateDistance(lat, lon, point.coordinates.lat, point.coordinates.lon)
-        }))
-        .sort((a, b) => a.distance - b.distance)
-        .slice(0, count);
+    // Проверяем что координаты валидны
+    if (typeof lat !== 'number' || typeof lon !== 'number' || 
+        isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0) {
+        console.error('Некорректные координаты:', lat, lon);
+        return wifiPoints.slice(0, count).map(point => ({...point, distance: 0}));
+    }
+    
+    try {
+        const pointsWithDistance = wifiPoints.map(point => {
+            const distance = calculateDistance(lat, lon, point.coordinates.lat, point.coordinates.lon);
+            return {
+                ...point,
+                distance: distance
+            };
+        });
+        
+        return pointsWithDistance
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, count);
+    } catch (error) {
+        console.error('Ошибка при поиске ближайших точек:', error);
+        return wifiPoints.slice(0, count).map(point => ({...point, distance: 0}));
+    }
 }
 
 function getTypeEmoji(type) {
@@ -1942,7 +1958,7 @@ function getTypeEmoji(type) {
 function getTypeName(type) {
     const names = {
     'здрав': 'Медицинские организации',
-    'образование': 'Школы, ВУЗы, юношеские клубы',
+    'образование': 'Школы, ВУЗы, юношеские клубы', 
     'тц': 'Торговые центры, рынки, магазины',
     'отдых': 'Развлечения, достопримечательности',
     'парки и скверы': 'Парки и скверы',
