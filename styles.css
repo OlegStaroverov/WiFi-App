@@ -117,6 +117,12 @@ body {
     transform: translateY(-1px);
 }
 
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
 /* Формы */
 .form-group {
     margin-bottom: 16px;
@@ -513,6 +519,36 @@ body {
     animation: pulse 1.5s infinite;
 }
 
+/* Стили для карты */
+.leaflet-container {
+    background: #f8f9fa;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.leaflet-popup-content {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoa UI', Roboto, sans-serif;
+}
+
+.leaflet-control-zoom a {
+    background: white !important;
+    color: #333 !important;
+    border: 1px solid #ccc !important;
+}
+
+/* Адаптивность карты */
+@media (max-width: 480px) {
+    .modal-content {
+        max-width: 100% !important;
+        height: 100vh !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+    }
+    
+    #locationMap {
+        height: calc(100vh - 150px) !important;
+    }
+}
+
 /* Адаптивность */
 @media (max-width: 480px) {
     .admin-content {
@@ -542,51 +578,80 @@ body {
     }
 }
 
-/* Дополнительные стили для модального окна выбора местоположения */
-.location-modal .modal-content {
-    max-width: 350px;
+/* Стили для кликабельных точек в результатах поиска */
+.result-distance {
+    background: #007AFF;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 8px;
 }
 
-.location-options {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin: 20px 0;
+/* Убираем скролл при открытом модальном окне */
+body.modal-open {
+    overflow: hidden;
 }
 
-.location-option {
-    padding: 15px;
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    text-align: center;
+/* Улучшаем внешний вид кликабельных точек */
+.point-item {
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
     background: white;
 }
 
-.location-option:hover {
-    border-color: #007AFF;
-    background: #f0f8ff;
-}
-
-.location-option.primary {
-    background: #007AFF;
-    color: white;
-    border-color: #007AFF;
-}
-
-.location-option.secondary {
-    background: #34C759;
-    color: white;
-    border-color: #34C759;
-}
-
-.location-tip {
-    margin-top: 15px;
-    padding: 12px;
+.point-item:hover {
     background: #f8f9fa;
-    border-radius: 8px;
-    font-size: 12px;
-    color: #666;
-    border-left: 3px solid #007AFF;
+    border-color: #007AFF;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Анимация для модального окна */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 400px;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
