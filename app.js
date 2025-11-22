@@ -5,6 +5,9 @@ class SevastopolWifiApp {
         this.currentTab = 'map';
         this.selectedRequest = null;
         this.isSearching = false;
+        this.map = null;
+        this.marker = null;
+        this.selectedLocation = null;
         this.init();
     }
 
@@ -107,7 +110,7 @@ class SevastopolWifiApp {
         list.innerHTML = points.map(point => `
             <div class="point-item" onclick="app.showPointDetails(${point.id})">
                 <h4>${getTypeEmoji(point.type)} ${point.name}</h4>
-                <div class="point-address">${point.address || 'Адрес не указан'}</div>
+                ${point.address ? `<div class="point-address">${point.address}</div>` : ''}
                 <div class="point-description">${point.description}</div>
             </div>
         `).join('');
@@ -134,7 +137,7 @@ class SevastopolWifiApp {
         searchResults.innerHTML = results.map(point => `
             <div class="search-result-item" onclick="app.selectPointForReport(${point.id}, '${point.name.replace(/'/g, "\\'")}')">
                 <strong>${getTypeEmoji(point.type)} ${point.name}</strong>
-                <div class="point-address">${point.address || 'Адрес не указан'}</div>
+                ${point.address ? `<div class="point-address">${point.address}</div>` : ''}
             </div>
         `).join('');
     }
@@ -155,137 +158,342 @@ class SevastopolWifiApp {
             ).join('');
     }
 
-    // ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ МЕТОД ДЛЯ РАБОТЫ С MAX BRIDGE
+    // ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ МЕТОД ГЕОЛОКАЦИИ
     async findNearestPoints() {
-        if (this.isSearching) {
-            return;
-        }
+        if (this.isSearching) return;
 
         const btn = document.getElementById('findBtn');
-        const results = document.getElementById('nearestResults');
-        
         this.isSearching = true;
         btn.disabled = true;
-        const originalText = btn.innerHTML;
         btn.innerHTML = '📍 Определяем местоположение...';
-        
+
         try {
-            // В MAX мини-приложениях используем кастомный метод для получения геолокации
-            const location = await this.requestLocationFromMax();
-            
-            if (location && location.latitude && location.longitude) {
-                const nearest = findNearestPoints(
-                    location.latitude, 
-                    location.longitude, 
-                    3 // Берем 3 ближайшие точки как в боте
-                );
-                this.displayNearestResults(nearest, false);
-            } else {
-                // Если геолокация недоступна, показываем популярные точки
-                this.showNearestWithoutLocation();
-            }
+            // Показываем модальное окно с картой для выбора местоположения
+            await this.showLocationPicker();
             
         } catch (error) {
-            console.error('Ошибка геолокации в MAX:', error);
+            console.error('Ошибка:', error);
             this.showGeolocationError(error);
         } finally {
             btn.disabled = false;
-            btn.innerHTML = originalText;
+            btn.innerHTML = '📍 Найти ближайший Wi-Fi';
             this.isSearching = false;
         }
     }
 
-    // НОВЫЙ МЕТОД: Запрос геолокации через MAX Bridge
-    requestLocationFromMax() {
+    // МОДАЛЬНОЕ ОКНО ВЫБОРА МЕСТОПОЛОЖЕНИЯ
+    async showLocationPicker() {
         return new Promise((resolve, reject) => {
-            // В MAX мини-приложениях используем кастомную реализацию для запроса геолокации
-            // Создаем интерфейс для выбора местоположения
-            
-            const locationModal = this.createLocationSelectionModal();
-            document.body.appendChild(locationModal);
-            
-            // Показываем модальное окно с выбором местоположения
-            locationModal.style.display = 'flex';
-            
-            // Обработчики для кнопок выбора
-            const useCurrentBtn = document.getElementById('useCurrentLocation');
-            const selectOnMapBtn = document.getElementById('selectOnMap');
-            const cancelBtn = document.getElementById('cancelLocation');
-            
-            // Использовать текущее местоположение (эмулируем)
-            useCurrentBtn.onclick = () => {
-                // В реальном MAX приложении здесь будет вызов нативного API
-                // Для демо используем координаты центра Севастополя
-                const demoLocation = {
-                    latitude: 44.6166,
-                    longitude: 33.5254,
-                    accuracy: 100
-                };
-                locationModal.remove();
-                resolve(demoLocation);
-            };
-            
-            // Выбрать на карте (открываем Яндекс.Карты)
-            selectOnMapBtn.onclick = () => {
-                const yandexMapUrl = `https://yandex.ru/maps/959/sevastopol/?ll=33.5254,44.6166&z=13`;
-                if (window.WebApp && window.WebApp.openLink) {
-                    window.WebApp.openLink(yandexMapUrl);
-                } else {
-                    window.open(yandexMapUrl, '_blank');
-                }
-                
-                // После выбора на карте пользователь вручную вводит координаты
-                const manualCoords = prompt('Введите координаты выбранного места в формате: ШИРОТА,ДОЛГОТА\nНапример: 44.6166,33.5254');
-                if (manualCoords) {
-                    const [lat, lon] = manualCoords.split(',').map(coord => parseFloat(coord.trim()));
-                    if (!isNaN(lat) && !isNaN(lon)) {
-                        locationModal.remove();
-                        resolve({ latitude: lat, longitude: lon, accuracy: 50 });
-                    } else {
-                        alert('Неверный формат координат');
-                    }
-                }
-                locationModal.remove();
-                reject(new Error('Пользователь отменил выбор местоположения'));
-            };
-            
-            // Отмена
-            cancelBtn.onclick = () => {
-                locationModal.remove();
-                reject(new Error('Пользователь отменил выбор местоположения'));
-            };
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 95%; height: 90vh; padding: 0;">
+                    <div style="padding: 15px; border-bottom: 1px solid #e0e0e0;">
+                        <div style="display: flex; justify-content: between; align-items: center;">
+                            <h3 style="margin: 0;">📍 Выберите ваше местоположение</h3>
+                            <span class="close" onclick="this.closest('.modal').remove(); reject(new Error('Отменено'))" style="font-size: 24px;">&times;</span>
+                        </div>
+                        <p style="margin: 8px 0 0 0; color: #666; font-size: 14px;">
+                            Кликните на карте или используйте автоматическое определение
+                        </p>
+                    </div>
+                    
+                    <div id="locationMap" style="height: calc(100% - 150px); width: 100%;"></div>
+                    
+                    <div style="padding: 15px; border-top: 1px solid #e0e0e0; display: flex; gap: 10px;">
+                        <button id="useCurrentLocation" class="btn primary" style="flex: 1;">
+                            📍 Мое местоположение
+                        </button>
+                        <button id="confirmLocation" class="btn secondary" style="flex: 1;" disabled>
+                            ✅ Использовать выбранное
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            document.body.style.overflow = 'hidden';
+
+            // Инициализируем карту после добавления в DOM
+            setTimeout(() => {
+                this.initLocationMap(modal);
+                this.setupLocationHandlers(modal, resolve, reject);
+            }, 100);
         });
     }
 
-    // Создание модального окна для выбора местоположения
-    createLocationSelectionModal() {
-        const modal = document.createElement('div');
-        modal.className = 'modal';
-        modal.style.display = 'none';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 350px;">
-                <span class="close" onclick="this.parentElement.parentElement.remove()">&times;</span>
-                <h3 style="margin-bottom: 16px;">📍 Выбор местоположения</h3>
-                <p style="margin-bottom: 20px; color: #666;">Как вы хотите указать ваше местоположение?</p>
-                
-                <button id="useCurrentLocation" class="btn primary" style="margin-bottom: 10px;">
-                    📍 Использовать текущее местоположение
-                </button>
-                
-                <button id="selectOnMap" class="btn secondary" style="margin-bottom: 10px;">
-                    🗺️ Выбрать на карте
-                </button>
-                
-                <button id="cancelLocation" class="btn" style="background: #8E8E93; color: white;">
-                    ❌ Отмена
-                </button>
-                
-                <div style="margin-top: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px; font-size: 12px; color: #666;">
-                    <strong>💡 Совет:</strong> Для точного поиска разрешите доступ к геолокации или выберите место на карте вручную
+    // ИНИЦИАЛИЗАЦИЯ КАРТЫ
+    initLocationMap(modal) {
+        const mapContainer = modal.querySelector('#locationMap');
+        
+        // Центр Севастополя
+        const sevastopolCenter = [44.6166, 33.5254];
+        
+        // Создаем карту
+        this.map = L.map(mapContainer).setView(sevastopolCenter, 13);
+        
+        // Добавляем слой OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(this.map);
+
+        // Добавляем маркер
+        this.marker = L.marker(sevastopolCenter, {
+            draggable: true,
+            autoPan: true
+        }).addTo(this.map);
+
+        // Обработчик перемещения маркера
+        this.marker.on('dragend', (e) => {
+            const marker = e.target;
+            const position = marker.getLatLng();
+            this.selectedLocation = {
+                latitude: position.lat,
+                longitude: position.lng
+            };
+            this.updateConfirmButton(modal, true);
+        });
+
+        // Обработчик клика по карте
+        this.map.on('click', (e) => {
+            const { lat, lng } = e.latlng;
+            this.marker.setLatLng([lat, lng]);
+            this.selectedLocation = {
+                latitude: lat,
+                longitude: lng
+            };
+            this.updateConfirmButton(modal, true);
+        });
+
+        this.selectedLocation = {
+            latitude: sevastopolCenter[0],
+            longitude: sevastopolCenter[1]
+        };
+    }
+
+    // НАСТРОЙКА ОБРАБОТЧИКОВ
+    setupLocationHandlers(modal, resolve, reject) {
+        const useCurrentBtn = modal.querySelector('#useCurrentLocation');
+        const confirmBtn = modal.querySelector('#confirmLocation');
+        const closeBtn = modal.querySelector('.close');
+
+        // Автоматическое определение местоположения
+        useCurrentBtn.onclick = () => {
+            this.getCurrentLocation()
+                .then(location => {
+                    this.marker.setLatLng([location.latitude, location.longitude]);
+                    this.map.setView([location.latitude, location.longitude], 16);
+                    this.selectedLocation = location;
+                    this.updateConfirmButton(modal, true);
+                })
+                .catch(error => {
+                    alert('❌ Не удалось определить местоположение. Выберите точку на карте вручную.');
+                    console.error('Geolocation error:', error);
+                });
+        };
+
+        // Подтверждение выбора
+        confirmBtn.onclick = () => {
+            if (this.selectedLocation) {
+                modal.remove();
+                document.body.style.overflow = 'auto';
+                this.performSearch(this.selectedLocation);
+                resolve();
+            }
+        };
+
+        // Закрытие
+        closeBtn.onclick = () => {
+            modal.remove();
+            document.body.style.overflow = 'auto';
+            reject(new Error('Отменено пользователем'));
+        };
+    }
+
+    // АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ МЕСТОПОЛОЖЕНИЯ
+    getCurrentLocation() {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('Геолокация не поддерживается'));
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    resolve({
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    });
+                },
+                (error) => {
+                    let errorMessage = 'Не удалось определить местоположение';
+                    
+                    switch(error.code) {
+                        case 1:
+                            errorMessage = 'Доступ к геолокации запрещен. Разрешите доступ в настройках браузера.';
+                            break;
+                        case 2:
+                            errorMessage = 'Информация о местоположении недоступна. Проверьте подключение к интернету.';
+                            break;
+                        case 3:
+                            errorMessage = 'Время ожидания определения местоположения истекло.';
+                            break;
+                    }
+                    
+                    reject(new Error(errorMessage));
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 60000
+                }
+            );
+        });
+    }
+
+    // ОБНОВЛЕНИЕ КНОПКИ ПОДТВЕРЖДЕНИЯ
+    updateConfirmButton(modal, enabled) {
+        const confirmBtn = modal.querySelector('#confirmLocation');
+        if (enabled) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = `✅ Использовать выбранное (${this.selectedLocation.latitude.toFixed(4)}, ${this.selectedLocation.longitude.toFixed(4)})`;
+        } else {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '✅ Использовать выбранное';
+        }
+    }
+
+    // ВЫПОЛНЕНИЕ ПОИСКА
+    performSearch(location) {
+        console.log('🎯 Выполняем поиск для координат:', location);
+        const nearest = this.findNearestPointsWithFallback(location.latitude, location.longitude, 3);
+        this.displayNearestResults(nearest, false);
+    }
+
+    // ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОИСКА БЛИЖАЙШИХ ТОЧЕК
+    findNearestPointsWithFallback(lat, lon, count = 3) {
+        console.log('🔍 ПОИСК БЛИЖАЙШИХ ТОЧЕК ДЛЯ КООРДИНАТ:', lat, lon);
+        console.log('📊 Всего точек в базе:', wifiPoints.length);
+        
+        // Проверяем что координаты валидны
+        if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {
+            console.error('❌ Некорректные координаты:', lat, lon);
+            // Возвращаем случайные точки как fallback
+            return this.getRandomPoints(count);
+        }
+        
+        try {
+            // Добавляем расстояние к каждой точке
+            const pointsWithDistance = wifiPoints.map(point => {
+                try {
+                    const distance = calculateDistance(lat, lon, point.coordinates.lat, point.coordinates.lon);
+                    return {
+                        ...point,
+                        distance: distance
+                    };
+                } catch (error) {
+                    console.error('❌ Ошибка расчета расстояния для точки:', point.id, error);
+                    return {
+                        ...point,
+                        distance: 999 // Большое расстояние по умолчанию
+                    };
+                }
+            });
+            
+            console.log('📊 Точки с расстояниями:', pointsWithDistance.slice(0, 3).map(p => `${p.name} - ${p.distance.toFixed(2)} км`));
+            
+            // Сортируем по расстоянию
+            const sortedPoints = pointsWithDistance.sort((a, b) => {
+                return a.distance - b.distance;
+            });
+            
+            console.log('📊 Отсортированные точки:', sortedPoints.slice(0, 5).map(p => `${p.name} - ${p.distance.toFixed(2)} км`));
+            
+            // Берем ближайшие count точек
+            const result = sortedPoints.slice(0, count);
+            
+            console.log('✅ РЕЗУЛЬТАТ ПОИСКА:');
+            result.forEach((point, index) => {
+                console.log(`   ${index + 1}. ${point.name} - ${point.distance.toFixed(2)} км`);
+            });
+            
+            return result;
+            
+        } catch (error) {
+            console.error('💥 Критическая ошибка при поиске ближайших точек:', error);
+            // Всегда возвращаем точки, даже при ошибке
+            return this.getRandomPoints(count);
+        }
+    }
+
+    // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ СЛУЧАЙНЫХ ТОЧЕК
+    getRandomPoints(count) {
+        const shuffled = [...wifiPoints].sort(() => 0.5 - Math.random());
+        return shuffled.slice(0, count).map(point => ({
+            ...point,
+            distance: Math.random() * 2 + 0.5 // Случайное расстояние от 0.5 до 2.5 км
+        }));
+    }
+
+    // ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    displayNearestResults(nearest, usedCenter = false) {
+        const results = document.getElementById('nearestResults');
+        
+        console.log('🔄 Отображение результатов:', nearest);
+        
+        // Проверяем что nearest существует и является массивом
+        if (!nearest || !Array.isArray(nearest)) {
+            console.error('❌ Некорректные данные точек:', nearest);
+            results.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    <h4>❌ Ошибка при поиске точек</h4>
+                    <p>Попробуйте выбрать другое местоположение</p>
+                    <button onclick="app.findNearestPoints()" class="btn primary" style="margin-top: 10px;">
+                        🔄 Попробовать снова
+                    </button>
                 </div>
-            </div>
+            `;
+            return;
+        }
+        
+        if (nearest.length === 0) {
+            console.warn('⚠️ Не найдено ближайших точек');
+            results.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    <h4>🔍 Ближайшие точки не найдены</h4>
+                    <p>Попробуйте выбрать другое местоположение</p>
+                    <button onclick="app.findNearestPoints()" class="btn primary" style="margin-top: 10px;">
+                        🔄 Выбрать другое место
+                    </button>
+                </div>
+            `;
+            return;
+        }
+        
+        let header = '🎯 Ближайшие точки Wi-Fi:';
+        if (usedCenter) {
+            header = '📍 Популярные точки в центре города:';
+        }
+        
+        // КЛИКАБЕЛЬНЫЕ ТОЧКИ БЕЗ КНОПОК
+        results.innerHTML = `
+            <h4>${header}</h4>
+            ${nearest.map(point => `
+                <div class="point-item" onclick="app.showPointDetails(${point.id})">
+                    <div style="display: flex; justify-content: between; align-items: flex-start; margin-bottom: 8px;">
+                        <h4 style="margin: 0; flex: 1;">${getTypeEmoji(point.type)} ${point.name}</h4>
+                        <div class="result-distance">${point.distance ? point.distance.toFixed(2) : '0.50'} км</div>
+                    </div>
+                    ${point.address ? `<div class="point-address">${point.address}</div>` : ''}
+                    <div class="point-description">${point.description}</div>
+                </div>
+            `).join('')}
         `;
-        return modal;
+        
+        console.log('✅ Результаты отображены успешно');
     }
 
     // Показать ошибку геолокации
@@ -294,77 +502,16 @@ class SevastopolWifiApp {
         
         results.innerHTML = `
             <div style="text-align: center; padding: 20px; color: #666;">
-                <h4>❌ Не удалось определить местоположение</h4>
-                <p>${error.message || 'Попробуйте выбрать местоположение вручную'}</p>
-                <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
-                    <button onclick="app.findNearestPoints()" class="btn primary">
-                        🔄 Попробовать снова
-                    </button>
-                    <button onclick="app.showNearestWithoutLocation()" class="btn secondary">
-                        📍 Показать популярные точки
-                    </button>
-                </div>
-            </div>
-        `;
-    }
-
-    showNearestWithoutLocation() {
-        const centerLat = 44.6166;
-        const centerLon = 33.5254;
-        const nearest = findNearestPoints(centerLat, centerLon, 3);
-        this.displayNearestResults(nearest, true);
-    }
-
-    displayNearestResults(nearest, usedCenter = false) {
-        const results = document.getElementById('nearestResults');
-        
-        console.log('Отображение результатов:', nearest);
-        
-        if (!nearest || !Array.isArray(nearest) || nearest.length === 0) {
-            console.error('Некорректные данные точек:', nearest);
-            nearest = wifiPoints.slice(0, 3).map(point => ({
-                ...point,
-                distance: 1.0
-            }));
-        }
-        
-        let header = '🎯 Ближайшие точки Wi-Fi:';
-        if (usedCenter) {
-            header = '📍 Популярные точки в центре города:';
-        }
-        
-        results.innerHTML = `
-            <h4>${header}</h4>
-            ${nearest.map(point => `
-                <div class="result-item">
-                    <div class="result-header">
-                        <div class="result-name">${getTypeEmoji(point.type)} ${point.name}</div>
-                        <div class="result-distance">${point.distance ? point.distance.toFixed(2) : '0.50'} км</div>
-                    </div>
-                    <div class="result-address">${point.address || 'Адрес не указан'}</div>
-                    <div class="point-description">${point.description}</div>
-                    <div class="result-actions">
-                        <button class="result-btn secondary" onclick="app.showPointDetails(${point.id})">
-                            📝 Подробнее
-                        </button>
-                        <button class="result-btn primary" onclick="app.openYandexMaps(${point.id})">
-                            🗺️ Построить маршрут
-                        </button>
-                    </div>
-                </div>
-            `).join('')}
-            ${usedCenter ? '<small style="color: #666; display: block; margin-top: 8px;">Чтобы видеть точные расстояния, укажите ваше местоположение</small>' : ''}
-            <div style="margin-top: 16px;">
-                <button onclick="app.findNearestPoints()" class="btn primary" style="width: 100%;">
-                    🔍 Найти другие точки
+                <h4>❌ ${error.message || 'Не удалось определить местоположение'}</h4>
+                <p>Попробуйте выбрать местоположение на карте</p>
+                <button onclick="app.findNearestPoints()" class="btn primary" style="margin-top: 10px;">
+                    🔄 Попробовать снова
                 </button>
             </div>
         `;
-        
-        console.log('Результаты отображены успешно');
     }
 
-    // Показать детали точки
+    // Показать детали точки - ИСПРАВЛЕННАЯ ВЕРСИЯ
     showPointDetails(pointId) {
         const point = wifiPoints.find(p => p.id === pointId);
         if (!point) return;
@@ -375,12 +522,15 @@ class SevastopolWifiApp {
         const yandexMapUrl = `https://yandex.ru/maps/?pt=${point.coordinates.lon},${point.coordinates.lat}&z=17&l=map`;
         const yandexNavigatorUrl = `yandexnavi://build_route_on_map?lat_to=${point.coordinates.lat}&lon_to=${point.coordinates.lon}`;
         
+        // УБИРАЕМ АДРЕС ЕСЛИ ЕГО НЕТ
         details.innerHTML = `
             <h3>${getTypeEmoji(point.type)} ${point.name}</h3>
+            ${point.address ? `
             <div class="detail-item">
                 <div class="detail-label">📍 Адрес:</div>
-                <div>${point.address || 'Не указан'}</div>
+                <div>${point.address}</div>
             </div>
+            ` : ''}
             <div class="detail-item">
                 <div class="detail-label">📝 Описание:</div>
                 <div>${point.description}</div>
@@ -404,6 +554,26 @@ class SevastopolWifiApp {
         
         modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
+        
+        // ДОБАВЛЯЕМ ОБРАБОТЧИК ДЛЯ ЗАКРЫТИЯ ПРИ КЛИКЕ НА ФОН
+        modal.addEventListener('click', this.handleModalClick);
+    }
+
+    // ОБРАБОТЧИК КЛИКА ПО ФОНУ МОДАЛЬНОГО ОКНА
+    handleModalClick = (e) => {
+        if (e.target.id === 'pointModal') {
+            this.closeModal();
+        }
+    }
+
+    // ЗАКРЫТИЕ МОДАЛЬНОГО ОКНА
+    closeModal() {
+        const modal = document.getElementById('pointModal');
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+        
+        // УДАЛЯЕМ ОБРАБОТЧИК ПРИ ЗАКРЫТИИ
+        modal.removeEventListener('click', this.handleModalClick);
     }
 
     // Открыть Яндекс.Карты для точки
@@ -419,11 +589,6 @@ class SevastopolWifiApp {
         } else {
             window.open(yandexMapUrl, '_blank');
         }
-    }
-
-    closeModal() {
-        document.getElementById('pointModal').style.display = 'none';
-        document.body.style.overflow = 'auto';
     }
 
     // Отправить сообщение о проблеме
