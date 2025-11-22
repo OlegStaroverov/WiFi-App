@@ -185,11 +185,11 @@ class SevastopolWifiApp {
     async showLocationPicker() {
         return new Promise((resolve, reject) => {
             const modal = document.createElement('div');
-            modal.className = 'modal';
+            modal.className = 'modal location-picker-modal';
             modal.style.display = 'flex';
             modal.innerHTML = `
-                <div class="modal-content" style="max-width: 95%; height: 90vh; padding: 0;">
-                    <div style="padding: 15px; border-bottom: 1px solid #e0e0e0;">
+                <div class="modal-content location-picker-content">
+                    <div class="location-picker-header">
                         <div style="display: flex; justify-content: between; align-items: center;">
                             <h3 style="margin: 0;">📍 Выберите ваше местоположение</h3>
                             <span class="close" onclick="this.closest('.modal').remove(); reject(new Error('Отменено'))" style="font-size: 24px;">&times;</span>
@@ -199,22 +199,22 @@ class SevastopolWifiApp {
                         </p>
                     </div>
                     
-                    <div id="locationMap" style="height: calc(100% - 150px); width: 100%;"></div>
+                    <div id="locationMap" class="location-map-container"></div>
                     
-                    <div style="padding: 15px; border-top: 1px solid #e0e0e0; display: flex; gap: 10px;">
-                        <button id="useCurrentLocation" class="btn primary" style="flex: 1;">
+                    <div class="location-picker-footer">
+                        <button id="useCurrentLocation" class="btn primary location-btn">
                             📍 Мое местоположение
                         </button>
-                        <button id="confirmLocation" class="btn secondary" style="flex: 1;" disabled>
+                        <button id="confirmLocation" class="btn secondary location-btn" disabled>
                             ✅ Использовать выбранное
                         </button>
                     </div>
                 </div>
             `;
-
+    
             document.body.appendChild(modal);
             document.body.style.overflow = 'hidden';
-
+    
             // Инициализируем карту после добавления в DOM
             setTimeout(() => {
                 this.initLocationMap(modal);
