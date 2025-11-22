@@ -230,7 +230,7 @@ class SevastopolWifiApp {
         // Центр Севастополя
         const sevastopolCenter = [44.6166, 33.5254];
         
-        // Создаем карту
+        // Создаем карту с адаптивным зумом
         this.map = L.map(mapContainer).setView(sevastopolCenter, 13);
         
         // Добавляем слой OpenStreetMap
@@ -238,13 +238,21 @@ class SevastopolWifiApp {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 18
         }).addTo(this.map);
-
-        // Добавляем маркер
+    
+        // Добавляем маркер с увеличенным размером для мобилок
+        const iconSize = window.innerWidth <= 480 ? [30, 30] : [25, 41];
+        const myIcon = L.icon({
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            iconSize: iconSize,
+            iconAnchor: [iconSize[0]/2, iconSize[1]]
+        });
+    
         this.marker = L.marker(sevastopolCenter, {
             draggable: true,
-            autoPan: true
+            autoPan: true,
+            icon: myIcon
         }).addTo(this.map);
-
+    
         // Обработчик перемещения маркера
         this.marker.on('dragend', (e) => {
             const marker = e.target;
@@ -255,7 +263,7 @@ class SevastopolWifiApp {
             };
             this.updateConfirmButton(modal, true);
         });
-
+    
         // Обработчик клика по карте
         this.map.on('click', (e) => {
             const { lat, lng } = e.latlng;
@@ -265,8 +273,18 @@ class SevastopolWifiApp {
                 longitude: lng
             };
             this.updateConfirmButton(modal, true);
+            
+            // Автопан для мобилок - центрируем карту на выбранной точке
+            if (window.innerWidth <= 480) {
+                this.map.panTo([lat, lng]);
+            }
         });
-
+    
+        // Перерисовываем карту после инициализации
+        setTimeout(() => {
+            this.map.invalidateSize();
+        }, 100);
+    
         this.selectedLocation = {
             latitude: sevastopolCenter[0],
             longitude: sevastopolCenter[1]
