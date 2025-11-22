@@ -1898,74 +1898,27 @@ let adminRequests = JSON.parse(localStorage.getItem('admin_requests')) || [];
 
 // 🎯 Вспомогательные функции
 function calculateDistance(lat1, lon1, lat2, lon2) {
+    console.log(`📍 Расчет расстояния: (${lat1}, ${lon1}) -> (${lat2}, ${lon2})`);
+    
     const R = 6371; // Радиус Земли в км
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
         Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
         Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     const distance = R * c;
+    
+    console.log(`📏 Расстояние: ${distance.toFixed(3)} км`);
     return distance;
 }
 
-function findNearestPoints(lat, lon, count = 3) {
-    console.log('Поиск точек для координат:', lat, lon);
-    
-    // Проверяем что координаты валидны
-    if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {
-        console.error('Некорректные координаты:', lat, lon);
-        // Возвращаем первые точки из списка как fallback
-        return wifiPoints.slice(0, count).map(point => ({
-            ...point,
-            distance: 0.5
-        }));
-    }
-    
-    try {
-        // Добавляем расстояние к каждой точке
-        const pointsWithDistance = wifiPoints.map(point => {
-            try {
-                const distance = calculateDistance(lat, lon, point.coordinates.lat, point.coordinates.lon);
-                return {
-                    ...point,
-                    distance: distance
-                };
-            } catch (error) {
-                console.error('Ошибка расчета расстояния для точки:', point.id, error);
-                return {
-                    ...point,
-                    distance: 10 // Большое расстояние по умолчанию
-                };
-            }
-        });
-        
-        // Сортируем по расстоянию и берем первые count точек
-        const sortedPoints = pointsWithDistance.sort((a, b) => {
-            return a.distance - b.distance;
-        });
-        
-        const result = sortedPoints.slice(0, count);
-        console.log('Найдено точек:', result.length);
-        console.log('Результат поиска:', result);
-        
-        return result;
-        
-    } catch (error) {
-        console.error('Критическая ошибка при поиске ближайших точек:', error);
-        // Всегда возвращаем точки, даже при ошибке
-        return wifiPoints.slice(0, count).map(point => ({
-            ...point,
-            distance: 1.0
-        }));
-    }
-}
+// УДАЛЕНА старая функция findNearestPoints - теперь она в классе приложения
 
 function getTypeEmoji(type) {
     const emojis = {
         'здрав': '🏥',
-        'образование': '🎓',
+        'образование': '🎓', 
         'тц': '🛍️',
         'отдых': '🌳',
         'парки и скверы': '🌳',
@@ -1997,7 +1950,7 @@ function getTypeName(type) {
         'АЗС': 'АЗС',
         'гостиница': 'Гостиницы',
         'пляж': 'Пляжи',
-        'турбаза': 'Турбазы',
+        ' турбаза': 'Турбазы',
         'дома': 'Жилые комплексы',
         'кафе': 'Кафе',
         'торговля': 'Магазины',
